@@ -71,25 +71,25 @@ function About() {
               </div>
             </div>
             <div className="about-image">
-              <img src="https://cdn.pixabay.com/photo/2016/03/05/19/02/hen-1238714_640.jpg" alt="Our Farm" />
+              <img src="/images/about-hens.jpg" alt="Our Farm" />
             </div>
           </div>
         </div>
       </section>
 
       {/* Timeline */}
-      <section style={{background:'white', padding:'60px 0', borderTop:'1px solid #e8e5df'}}>
+      <section className="timeline-section" style={{background:'white', padding:'60px 0', borderTop:'1px solid #e8e5df'}}>
         <div className="container">
           <div className="section-header">
             <span className="section-label">OUR JOURNEY</span>
             <h2>Timeline</h2>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:20}}>
+          <div className="timeline-grid">
             {timeline.map(t=> (
-              <div key={t.year} style={{borderLeft:'3px solid #c9a227', paddingLeft:16}}>
-                <div style={{fontSize:22, fontWeight:800, color:'#2d5016'}}>{t.year}</div>
-                <h4 style={{margin:'6px 0', fontSize:15}}>{t.title}</h4>
-                <p style={{fontSize:13, color:'#777', lineHeight:1.6}}>{t.desc}</p>
+              <div key={t.year} className="timeline-item">
+                <div className="timeline-year">{t.year}</div>
+                <h4>{t.title}</h4>
+                <p>{t.desc}</p>
               </div>
             ))}
           </div>
@@ -146,22 +146,22 @@ function About() {
       </section>
 
       {/* Farm Gallery */}
-      <section style={{background:'#f9f8f6', padding:'60px 0'}}>
+      <section className="farm-gallery" style={{background:'#f9f8f6', padding:'60px 0'}}>
         <div className="container">
           <div className="section-header">
             <span className="section-label">LIFE ON THE FARM</span>
             <h2>Pasture, Care, Quality</h2>
             <p>Open pastures, clean coops, and hands-on care every day.</p>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:16}}>
-            <div style={{borderRadius:12, overflow:'hidden', height:320}}><img src="https://cdn.pixabay.com/photo/2016/03/05/19/02/hen-1238714_640.jpg" alt="Hens" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
-            <div style={{borderRadius:12, overflow:'hidden', height:320}}><img src="https://cdn.pixabay.com/photo/2017/11/11/21/41/chicken-2939480_640.jpg" alt="Chicken" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
-            <div style={{borderRadius:12, overflow:'hidden', height:320}}><img src="https://cdn.pixabay.com/photo/2021/11/22/19/36/turkey-6817284_640.jpg" alt="Turkey" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
+          <div className="gallery-grid-main">
+            <div className="gallery-main-image" style={{borderRadius:12, overflow:'hidden', height:320}}><img src="/images/about-hens.jpg" alt="Hens" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
+            <div className="gallery-secondary-image" style={{borderRadius:12, overflow:'hidden', height:320}}><img src="/images/about-chicken.jpg" alt="Chicken" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
+            <div className="gallery-secondary-image" style={{borderRadius:12, overflow:'hidden', height:320}}><img src="/images/about-turkey.jpg" alt="Turkey" style={{width:'100%', height:'100%', objectFit:'cover'}} /></div>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginTop:16}}>
-            <div style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaEye color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Visit Us</h4><p style={{fontSize:13, color:'#777'}}>Open farm Saturdays 9AM-1PM. See how we raise our birds.</p></div>
-            <div style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaHistory color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Daily Care</h4><p style={{fontSize:13, color:'#777'}}>Fresh water, natural feed, health checks at dawn and dusk.</p></div>
-            <div style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaCertificate color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Traceable</h4><p style={{fontSize:13, color:'#777'}}>Every batch traceable to pasture lot and processing date.</p></div>
+          <div className="gallery-grid-secondary" style={{marginTop:16}}>
+            <div className="gallery-info-card" style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaEye color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Visit Us</h4><p style={{fontSize:13, color:'#777'}}>Open farm Saturdays 9AM-1PM. See how we raise our birds.</p></div>
+            <div className="gallery-info-card" style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaHistory color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Daily Care</h4><p style={{fontSize:13, color:'#777'}}>Fresh water, natural feed, health checks at dawn and dusk.</p></div>
+            <div className="gallery-info-card" style={{background:'white', padding:20, borderRadius:12, textAlign:'center'}}><FaCertificate color="#2d5016" size={24} /><h4 style={{margin:'8px 0 4px'}}>Traceable</h4><p style={{fontSize:13, color:'#777'}}>Every batch traceable to pasture lot and processing date.</p></div>
           </div>
         </div>
       </section>

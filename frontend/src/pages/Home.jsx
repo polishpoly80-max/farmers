@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom'
 import { FaShieldAlt, FaCheckCircle, FaMoneyBillWave, FaTruck, FaStar, FaQuoteLeft, FaLeaf, FaAward, FaPhoneAlt, FaArrowRight } from 'react-icons/fa'
 import { toast } from 'react-toastify'
 import { useProducts } from '../context/ProductContext'
+import RainCanvas from '../components/RainCanvas'
 
 const categories = [
-  { name: 'Chicken', count: '12 Products', image: 'https://cdn.pixabay.com/photo/2017/11/11/21/41/chicken-2939480_640.jpg', link: '/products?category=Chicken' },
-  { name: 'Eggs', count: '8 Products', image: 'https://cdn.pixabay.com/photo/2016/07/23/15/55/eggs-1536990_640.jpg', link: '/products?category=Eggs' },
-  { name: 'Duck', count: '5 Products', image: 'https://cdn.pixabay.com/photo/2019/10/22/17/03/duck-4569327_640.jpg', link: '/products?category=Duck' },
-  { name: 'Turkey', count: '4 Products', image: 'https://cdn.pixabay.com/photo/2021/11/22/19/36/turkey-6817284_640.jpg', link: '/products?category=Turkey' },
+  { name: 'Chicken', count: '12 Products', image: '/images/category-chicken.jpg', link: '/products?category=Chicken' },
+  { name: 'Eggs', count: '8 Products', image: '/images/category-eggs.jpg', link: '/products?category=Eggs' },
+  { name: 'Duck', count: '5 Products', image: '/images/category-duck.jpg', link: '/products?category=Duck' },
+  { name: 'Turkey', count: '4 Products', image: '/images/category-turkey.jpg', link: '/products?category=Turkey' },
 ]
 
 const features = [
@@ -44,9 +45,10 @@ function Home() {
       {/* Hero Section */}
       <section className="hero">
         <div className="hero-bg">
-          <img src="https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?w=1600&q=80" alt="Chickens" />
+          <img src="/images/hero-chickens.jpg" alt="Chickens" />
           <div className="hero-overlay"></div>
         </div>
+        <RainCanvas />
         <div className="container hero-content">
           <div className="hero-left">
             <div className="hero-subtitle">
@@ -123,10 +125,10 @@ function Home() {
             <h2>Shop by Category</h2>
             <p>Everything from broilers to free-range eggs, raised naturally.</p>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:20}}>
+          <div className="home-categories-grid">
             {categories.map(cat => (
               <Link key={cat.name} to={cat.link} className="shop-card">
-                <div className="shop-card-image" style={{height:180}}>
+                <div className="shop-card-image">
                   <img src={cat.image} alt={cat.name} />
                   <div style={{position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,0.55), transparent)'}} />
                   <div style={{position:'absolute', bottom:14, left:16, color:'white'}}>
@@ -181,19 +183,19 @@ function Home() {
       </section>
 
       {/* How It Works */}
-      <section style={{background:'white', padding:'70px 0', borderTop:'1px solid #e8e5df', borderBottom:'1px solid #e8e5df'}}>
+      <section className="how-it-works" style={{background:'white', padding:'70px 0', borderTop:'1px solid #e8e5df', borderBottom:'1px solid #e8e5df'}}>
         <div className="container">
           <div className="section-header">
             <span className="section-label">HOW IT WORKS</span>
             <h2>From Farm to Your Table</h2>
             <p>Three simple steps to get fresh poultry delivered.</p>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:28, textAlign:'center'}}>
+          <div className="process-steps-grid">
             {processSteps.map(s => (
-              <div key={s.step} style={{background:'#f9f8f6', padding:'32px 24px', borderRadius:12}}>
-                <div style={{fontSize:40, fontWeight:800, color:'#c9a227', opacity:0.35, lineHeight:1}}>{s.step}</div>
-                <h3 style={{margin:'12px 0 8px', fontSize:18}}>{s.title}</h3>
-                <p style={{fontSize:14, color:'#777', lineHeight:1.6}}>{s.desc}</p>
+              <div key={s.step} className="process-step">
+                <div className="process-step-number">{s.step}</div>
+                <h3>{s.title}</h3>
+                <p>{s.desc}</p>
               </div>
             ))}
           </div>
@@ -225,7 +227,7 @@ function Home() {
               <Link to="/about" className="btn-gold">Learn More About Us</Link>
             </div>
             <div className="about-image">
-              <img src="https://cdn.pixabay.com/photo/2016/03/05/19/02/hen-1238714_640.jpg" alt="Farm" />
+              <img src="/images/about-farm.jpg" alt="Farm" />
             </div>
           </div>
         </div>

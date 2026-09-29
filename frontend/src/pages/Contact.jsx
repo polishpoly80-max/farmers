@@ -1,6 +1,10 @@
 import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { FaMapMarkerAlt, FaPhone, FaEnvelope, FaClock, FaPaperPlane, FaWhatsapp, FaHeadset, FaTruck, FaStore } from 'react-icons/fa'
 import { toast } from 'react-toastify'
+import { useAuth } from '../context/AuthContext'
+import { useBranch } from '../context/BranchContext'
+import { createCareSession } from '../services/api'
 
 const contactInfo = [
   { icon: FaMapMarkerAlt, title: 'Visit Us', details: ['123 Farm Road', 'Countryside, CA 95123', 'Open farm Saturdays 9AM-1PM'] },
@@ -16,10 +20,13 @@ const departments = [
 ]
 
 function Contact() {
+  const { user } = useAuth()
+  const { currentBranch } = useBranch()
+  const navigate = useNavigate()
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
+    name: user?.full_name || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
     subject: '',
     message: ''
   })
@@ -29,29 +36,48 @@ function Contact() {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (formData.message.length < 10) {
       toast.error('Please write a more detailed message (at least 10 characters)')
       return
     }
+    // Messages become real support tickets, so staff can actually answer them.
+    // Guests are asked to sign in first, which keeps every reply traceable.
+    if (!user) {
+      toast.info('Please sign in so the farm team can reply to you')
+      navigate('/login')
+      return
+    }
     setLoading(true)
-    setTimeout(() => {
-      toast.success('Message sent successfully! We\'ll get back to you within 4 hours during business hours.')
-      setFormData({ name: '', email: '', phone: '', subject: '', message: '' })
+    try {
+      await createCareSession({
+        branch_id: currentBranch?.branch_id || user.tenant_id || undefined,
+        topic: formData.subject || 'General support',
+        message: `[${formData.name}${formData.phone ? ` • ${formData.phone}` : ''}] ${formData.message}`,
+      })
+      toast.success('Message sent! The branch team will reply in your care chat.')
+      setFormData({ name: user?.full_name || '', email: user?.email || '', phone: user?.phone || '', subject: '', message: '' })
+      navigate('/care-chat')
+    } catch (err) {
+      toast.error(err.message || 'Could not send your message')
+    } finally {
       setLoading(false)
-    }, 1000)
+    }
   }
 
   return (
     <div className="contact-page">
       {/* Hero */}
-      <div className="contact-hero" style={{background:'linear-gradient(135deg, #2d5016 0%, #1a3009 100%)', color:'white', padding:'60px 0', textAlign:'center'}}>
+      <div className="contact-hero">
         <div className="container">
-          <h1 style={{color:'white'}}>Contact Us</h1>
-          <p style={{opacity:0.85, maxWidth:600, margin:'10px auto 16px'}}>Have questions about orders, bulk pricing, or visiting the farm? We'd love to hear from you — replies within 4 hours during business hours.</p>
-          <div style={{display:'inline-flex', gap:10, background:'rgba(255,255,255,0.12)', padding:'10px 18px', borderRadius:30, fontSize:13}}>
-            <span><FaPhone /> +1 (555) 123-4567</span> <span>•</span> <a href="https://wa.me/15551234567" target="_blank" rel="noopener noreferrer" style={{display:'inline-flex', alignItems:'center', gap:6, color:'#c9a227'}}><FaWhatsapp /> WhatsApp Us</a>
+          <h1>Contact Us</h1>
+          <p className="contact-hero-subtitle">Have questions about orders, bulk pricing, or visiting the farm? We'd love to hear from you — replies within 4 hours during business hours.</p>
+          <div className="contact-hero-actions">
+            <span><FaPhone /> +1 (555) 123-4567</span>
+            <a href="https://wa.me/15551234567" target="_blank" rel="noopener noreferrer" className="contact-whatsapp-link">
+              <FaWhatsapp /> WhatsApp Us
+            </a>
           </div>
         </div>
       </div>
@@ -74,13 +100,18 @@ function Contact() {
           </div>
 
           {/* Departments */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginTop:20}}>
+          <div className="departments-grid">
             {departments.map(d=> (
-              <div key={d.title} style={{background:'white', border:'1px solid #e8e5df', borderRadius:12, padding:20}}>
-                <div style={{width:44, height:44, borderRadius:'50%', background:'#f0f7ee', display:'flex', alignItems:'center', justifyContent:'center', color:'#2d5016', marginBottom:12}}><d.icon /></div>
-                <h4 style={{fontSize:15, marginBottom:6}}>{d.title}</h4>
-                <p style={{fontSize:12, color:'#777', marginBottom:8}}>{d.desc}</p>
-                <div style={{fontSize:13}}><div>{d.email}</div><div style={{color:'#2d5016', fontWeight:600}}>{d.phone}</div></div>
+              <div key={d.title} className="department-card">
+                <div className="department-icon">
+                  <d.icon />
+                </div>
+                <h4>{d.title}</h4>
+                <p>{d.desc}</p>
+                <div className="department-contact">
+                  <div>{d.email}</div>
+                  <div>{d.phone}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -160,6 +191,7 @@ function Contact() {
                 <button type="submit" className="btn btn-primary btn-large" disabled={loading}>
                   <FaPaperPlane /> {loading ? 'Sending...' : 'Send Message'}
                 </button>
+                <p style={{fontSize:12, color:'#777', marginTop:10}}>Messages open a support conversation so you can chat live and follow replies. Prefer video? Open <Link to="/care-chat" style={{color:'#2d5016', textDecoration:'underline'}}>Live Care</Link> after signing in.</p>
                 <p style={{fontSize:12, color:'#777', marginTop:10}}>We respect your privacy. See <a href="/privacy" style={{color:'#2d5016', textDecoration:'underline'}}>Privacy Policy</a>.</p>
               </form>
             </div>

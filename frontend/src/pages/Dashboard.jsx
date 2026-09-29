@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 import { useNavigate, Link } from 'react-router-dom'
-import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaSignOutAlt, FaShoppingBag, FaHeart, FaBox, FaChevronRight, FaTrash, FaEdit, FaCheck } from 'react-icons/fa'
+import { FaUser, FaEnvelope, FaPhone, FaMapMarkerAlt, FaSignOutAlt, FaShoppingBag, FaBox, FaChevronRight, FaTrash, FaEdit, FaCheck, FaTruck, FaBell, FaBellSlash, FaComments } from 'react-icons/fa'
 import { toast } from 'react-toastify'
 import { getOrders } from '../services/api'
+import { getPushStatus, enablePushNotifications, disablePushNotifications, sendTestPushNotification } from '../services/push'
 
 function Dashboard() {
   const { user, logout, updateProfile } = useAuth()
@@ -23,6 +24,8 @@ function Dashboard() {
     address: user?.address || ''
   })
   const [saving, setSaving] = useState(false)
+  const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', subscribed: false, loading: true })
+  const [pushBusy, setPushBusy] = useState(false)
 
   useEffect(() => {
     setEditForm({
@@ -51,6 +54,43 @@ function Dashboard() {
     }
     fetchOrders()
   }, [])
+
+  useEffect(() => {
+    getPushStatus()
+      .then(status => setPushStatus({ ...status, loading: false }))
+      .catch(() => setPushStatus({ supported: false, permission: 'unsupported', subscribed: false, loading: false }))
+  }, [])
+
+  const handlePushToggle = async () => {
+    setPushBusy(true)
+    try {
+      if (pushStatus.subscribed) {
+        await disablePushNotifications()
+        setPushStatus(previous => ({ ...previous, subscribed: false }))
+        toast.success('Push notifications disabled')
+      } else {
+        await enablePushNotifications()
+        setPushStatus(previous => ({ ...previous, subscribed: true, permission: 'granted' }))
+        toast.success('Push notifications enabled')
+      }
+    } catch (error) {
+      toast.error(error.message || 'Unable to update push notifications')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  const handleTestPush = async () => {
+    setPushBusy(true)
+    try {
+      const result = await sendTestPushNotification()
+      toast.success(result.sent ? 'Test notification sent' : 'No active push subscription found')
+    } catch (error) {
+      toast.error(error.message || 'Unable to send test notification')
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   const handleLogout = () => {
     logout()
@@ -99,10 +139,16 @@ function Dashboard() {
   return (
     <div className="dashboard-page">
       <div className="container">
-        <div className="dashboard-header">
-          <h1>My Account</h1>
-          <p>Welcome back, {user.full_name || user.email} • Member since 2026</p>
-        </div>
+        <header className="dashboard-header">
+          <div>
+            <span className="dashboard-eyebrow"><FaUser /> Account center</span>
+            <h1>Welcome, {(user.full_name || user.email || 'there').split(' ')[0]}</h1>
+            <p>Manage your orders, saved items, profile, and delivery details.</p>
+          </div>
+          <Link to="/products" className="btn btn-primary dashboard-shop-button">
+            <FaShoppingBag /> Shop fresh products
+          </Link>
+        </header>
 
         <div className="dashboard-layout">
           {/* Sidebar */}
@@ -133,11 +179,11 @@ function Dashboard() {
               </button>
             </nav>
 
-            <div style={{marginTop:16, background:'#f9f8f6', borderRadius:8, padding:12, fontSize:12, lineHeight:1.6, color:'#555'}}>
-              <strong>Need help?</strong><br/>
-              <FaEnvelope style={{marginRight:4}} /> info@premiumpoultry.com<br/>
-              <FaPhone style={{marginRight:4}} /> +1 (555) 123-4567<br/>
-              <Link to="/contact" style={{color:'#2d5016', textDecoration:'underline'}}>Contact support</Link>
+            <div className="sidebar-help">
+              <strong>Need help?</strong>
+              <span><FaEnvelope /> info@premiumpoultry.com</span>
+              <span><FaPhone /> +1 (555) 123-4567</span>
+              <Link to="/contact">Contact support <FaChevronRight /></Link>
             </div>
           </div>
 
@@ -170,24 +216,44 @@ function Dashboard() {
                   </div>
                 </div>
 
-                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24}}>
-                  <div style={{background:'#f9f8f6', padding:16, borderRadius:8}}>
-                    <h4 style={{fontSize:14, marginBottom:8, display:'flex', alignItems:'center', gap:8}}><FaUser color="#2d5016" /> Profile</h4>
-                    <div style={{fontSize:13, lineHeight:1.8, color:'#555'}}>
-                      <div><FaEnvelope style={{marginRight:6}} />{user.email}</div>
-                      <div><FaPhone style={{marginRight:6}} />{user.phone || 'Not set'}</div>
-                      <div><FaMapMarkerAlt style={{marginRight:6}} />{user.address || 'Not set'}</div>
+                <div className="account-summary-grid">
+                  <section className="account-summary-card">
+                    <h3 className="account-card-title"><span className="account-card-icon"><FaUser /></span> Profile</h3>
+                    <div className="account-details">
+                      <span><FaEnvelope />{user.email}</span>
+                      <span><FaPhone />{user.phone || 'Not set'}</span>
+                      <span><FaMapMarkerAlt />{user.address || 'Not set'}</span>
                     </div>
-                    <button onClick={()=>setActiveTab('profile')} style={{marginTop:10, fontSize:12, color:'#2d5016', fontWeight:600}}>Edit profile →</button>
-                  </div>
-                  <div style={{background:'#f0f7ee', padding:16, borderRadius:8, border:'1px solid #d4edda'}}>
-                    <h4 style={{fontSize:14, marginBottom:6}}>Delivery Info</h4>
-                    <p style={{fontSize:12, color:'#555', lineHeight:1.6}}>Free shipping over $50 • Same-day dispatch before 2PM • 50-mile radius. <Link to="/contact" style={{color:'#2d5016', textDecoration:'underline'}}>Questions?</Link></p>
-                    <div style={{marginTop:8, fontSize:12}}>
-                      <Link to="/products" className="btn btn-primary" style={{padding:'8px 14px', fontSize:12}}>Shop Now</Link>
+                    <button className="account-text-button" onClick={() => setActiveTab('profile')}>
+                      Edit profile <FaChevronRight />
+                    </button>
+                  </section>
+
+                  <section className="account-summary-card account-delivery-card">
+                    <h3 className="account-card-title"><span className="account-card-icon"><FaTruck /></span> Delivery information</h3>
+                    <p>Free shipping over $50. Same-day dispatch before 2PM within a 50-mile radius.</p>
+                    <div className="account-card-actions">
+                      <Link to="/products" className="btn btn-primary btn-small">Shop now</Link>
+                      <Link to="/contact" className="account-text-button">Ask a question <FaChevronRight /></Link>
                     </div>
-                  </div>
+                  </section>
                 </div>
+
+                <section className="push-notification-card">
+                  <div className="push-notification-icon"><FaBell /></div>
+                  <div className="push-notification-copy">
+                    <h3>Order updates on your phone</h3>
+                    <p>Get a push notification when your order is received and its status changes.</p>
+                    {!pushStatus.supported && <small>Push notifications are not supported in this browser.</small>}
+                    {pushStatus.supported && pushStatus.permission === 'denied' && <small>Notifications are blocked in your browser settings.</small>}
+                  </div>
+                  <div className="push-notification-actions">
+                    <button className={`btn ${pushStatus.subscribed ? 'btn-outline' : 'btn-primary'} btn-small`} onClick={handlePushToggle} disabled={pushBusy || !pushStatus.supported || pushStatus.permission === 'denied'}>
+                      {pushStatus.subscribed ? <><FaBellSlash /> Disable</> : <><FaBell /> Enable</>}
+                    </button>
+                    {pushStatus.subscribed && <button className="account-text-button push-test-button" onClick={handleTestPush} disabled={pushBusy}>Send test</button>}
+                  </div>
+                </section>
 
                 <div className="recent-orders">
                   <h3>Recent Orders</h3>
@@ -218,8 +284,8 @@ function Dashboard() {
                   <Link to="/products" className="quick-action">
                     <FaShoppingBag /> Continue Shopping
                   </Link>
-                  <Link to="/products" className="quick-action">
-                    <FaHeart /> Browse Products
+                  <Link to="/care-chat" className="quick-action">
+                    <FaComments /> Get Help
                   </Link>
                 </div>
               </div>
@@ -232,39 +298,39 @@ function Dashboard() {
                 {ordersLoading ? (
                   <p style={{fontSize:13, color:'#777', padding:'20px 0'}}>Loading orders...</p>
                 ) : orders.length === 0 ? (
-                  <div style={{textAlign:'center', padding:'40px 0'}}>
-                    <FaBox size={48} color="#e8e5df" style={{marginBottom:12}} />
+                  <div className="empty-state">
+                    <FaBox />
                     <h3>No orders yet</h3>
-                    <p style={{color:'#777', margin:'8px 0 16px'}}>When you place an order, it will appear here.</p>
-                    <Link to="/products" className="btn btn-primary">Browse Products</Link>
+                    <p>When you place an order, its status, delivery details, and invoice will appear here.</p>
+                    <Link to="/products" className="btn btn-primary">Browse products</Link>
                   </div>
                 ) : (
                   <div className="orders-list">
                     {orders.map(order => (
-                      <div className="order-card" key={order.order_id} style={{border:'1px solid #e8e5df', borderRadius:12, padding:16, marginBottom:12}}>
-                        <div className="order-card-header" style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
+                      <article className="order-card" key={order.order_id}>
+                        <div className="order-card-header">
                           <div>
-                            <strong>{order.order_id}</strong><br/>
-                            <span style={{fontSize:12, color:'#777'}}>Placed on {formatDate(order.created_at)} • {order.shipping_address || 'N/A'}</span>
+                            <strong>{order.order_id}</strong>
+                            <span>Placed on {formatDate(order.created_at)} • {order.shipping_address || 'Delivery address not provided'}</span>
                           </div>
                           <span className={`order-status ${getStatusClass(order.status)}`}>{order.status}</span>
                         </div>
-                        <div className="order-card-body" style={{display:'flex', justifyContent:'space-between', fontSize:13}}>
-                          <span>{order.items?.length || 0} item(s) • {order.status==='delivered' ? 'Delivered' : order.delivery_mode === 'pickup' ? 'Farm Pickup' : 'Estimated 3-5 days'}</span>
-                          <span className="order-total" style={{fontWeight:700}}>${order.total.toFixed(2)}</span>
+                        <div className="order-card-body">
+                          <span>{order.items?.length || 0} item(s) • {order.status === 'delivered' ? 'Delivered' : order.delivery_mode === 'pickup' ? 'Farm Pickup' : 'Estimated 3–5 days'}</span>
+                          <span className="order-total">${order.total.toFixed(2)}</span>
                         </div>
                         {order.items && order.items.length > 0 && (
-                          <div style={{marginTop:8, fontSize:12, color:'#555'}}>
-                            {order.items.map((item, idx) => (
-                              <span key={idx}>{item.name} (x{item.quantity}){idx < order.items.length - 1 ? ', ' : ''}</span>
+                          <p className="order-card-products">
+                            {order.items.map((item, index) => (
+                              <span key={index}>{item.name} (×{item.quantity}){index < order.items.length - 1 ? ', ' : ''}</span>
                             ))}
-                          </div>
+                          </p>
                         )}
-                        <div style={{marginTop:10, display:'flex', gap:8}}>
-                          <button className="btn btn-outline" style={{padding:'6px 12px', fontSize:12}} onClick={()=>toast.info('Invoice will be emailed to you')}>View Invoice</button>
-                          <button className="btn btn-outline" style={{padding:'6px 12px', fontSize:12}} onClick={()=>toast.info(`Tracking: ${order.status} – you will receive SMS update`)}>Track Order</button>
+                        <div className="order-card-actions">
+                          <button className="btn btn-outline btn-small" onClick={() => toast.info('Invoice will be emailed to you')}>View invoice</button>
+                          <button className="btn btn-outline btn-small" onClick={() => toast.info(`Tracking: ${order.status} — you will receive an SMS update`)}>Track order</button>
                         </div>
-                      </div>
+                      </article>
                     ))}
                   </div>
                 )}
@@ -282,17 +348,21 @@ function Dashboard() {
                     <Link to="/products" className="btn btn-primary">Browse Products</Link>
                   </div>
                 ) : (
-                  <div style={{display:'grid', gap:12}}>
-                    {wishlist.map(item=> (
-                      <div key={item.product_id} style={{display:'flex', gap:14, alignItems:'center', border:'1px solid #e8e5df', borderRadius:10, padding:12}}>
-                        <img src={item.image} alt={item.name} style={{width:64, height:64, objectFit:'cover', borderRadius:8}} />
-                        <div style={{flex:1}}>
-                          <strong style={{fontSize:14}}>{item.name}</strong><br/>
-                          <span style={{fontSize:12, color:'#777'}}>{item.category} • ${item.price}</span>
+                  <div className="wishlist-list">
+                    {wishlist.map(item => (
+                      <article className="wishlist-item" key={item.product_id}>
+                        <Link to={`/products/${item.product_id}`} className="wishlist-image">
+                          <img src={item.image} alt={item.name} />
+                        </Link>
+                        <div className="wishlist-details">
+                          <strong>{item.name}</strong>
+                          <span>{item.category} • ${item.price}</span>
                         </div>
-                        <Link to={`/products/${item.product_id}`} className="btn btn-primary" style={{padding:'8px 14px', fontSize:12}}>View</Link>
-                        <button onClick={()=>removeWishlist(item.product_id)} className="remove-btn"><FaTrash /></button>
-                      </div>
+                        <div className="wishlist-actions">
+                          <Link to={`/products/${item.product_id}`} className="btn btn-primary btn-small">View</Link>
+                          <button onClick={() => removeWishlist(item.product_id)} className="remove-btn" aria-label={`Remove ${item.name} from wishlist`}><FaTrash /></button>
+                        </div>
+                      </article>
                     ))}
                   </div>
                 )}
@@ -303,41 +373,43 @@ function Dashboard() {
               <div className="dashboard-profile">
                 <h2>Edit Profile</h2>
                 <p style={{fontSize:13, color:'#777', marginBottom:16}}>Update your personal details. Password change coming soon — contact support if needed.</p>
-                <div className="profile-form" style={{display:'grid', gap:12}}>
-                  <div className="form-row" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:14}}>
+                <div className="profile-form">
+                  <div className="form-row">
                     <div className="form-group">
                       <label>Full Name *</label>
-                      <input type="text" value={editForm.full_name} onChange={e=>setEditForm({...editForm, full_name: e.target.value})} placeholder="Your full name" />
+                      <input type="text" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} placeholder="Your full name" />
                     </div>
                     <div className="form-group">
                       <label>Email *</label>
-                      <input type="email" value={editForm.email} onChange={e=>setEditForm({...editForm, email: e.target.value})} placeholder="you@example.com" />
+                      <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} placeholder="you@example.com" />
                     </div>
                   </div>
-                  <div className="form-row" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:14}}>
+                  <div className="form-row">
                     <div className="form-group">
                       <label>Phone</label>
-                      <input type="tel" value={editForm.phone} onChange={e=>setEditForm({...editForm, phone: e.target.value})} placeholder="+1 (555) 000-0000" />
+                      <input type="tel" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} placeholder="+1 (555) 000-0000" />
                     </div>
                     <div className="form-group">
                       <label>Address</label>
-                      <input type="text" value={editForm.address} onChange={e=>setEditForm({...editForm, address: e.target.value})} placeholder="123 Farm Road, Countryside, CA" />
+                      <input type="text" value={editForm.address} onChange={e => setEditForm({ ...editForm, address: e.target.value })} placeholder="123 Farm Road, Countryside, CA" />
                     </div>
                   </div>
-                  <button onClick={handleSaveProfile} disabled={saving} className="btn btn-primary" style={{padding:'12px 20px'}}>
-                    <FaCheck /> {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                  <div style={{fontSize:12, color:'#777'}}>Changes are saved to your account. For password reset, use the forgot password flow on login or contact support.</div>
+                  <div className="profile-form-footer">
+                    <button onClick={handleSaveProfile} disabled={saving} className="btn btn-primary">
+                      <FaCheck /> {saving ? 'Saving...' : 'Save changes'}
+                    </button>
+                    <p>Your details are only used for order updates and delivery.</p>
+                  </div>
                 </div>
 
-                <div style={{marginTop:24, background:'#f9f8f6', padding:16, borderRadius:8, border:'1px solid #e8e5df'}}>
-                  <h4 style={{fontSize:14, marginBottom:8}}>Account Security</h4>
-                  <ul style={{fontSize:13, color:'#555', lineHeight:1.8, paddingLeft:18}}>
-                    <li>Password is Argon2 hashed and never stored in plain text</li>
-                    <li>Login attempts are rate-limited (20/15 minutes) for your protection</li>
-                    <li>Signed in as {user.email}</li>
+                <section className="account-security">
+                  <h3>Account security</h3>
+                  <ul>
+                    <li><FaCheck /> Passwords are securely hashed and never stored as plain text.</li>
+                    <li><FaCheck /> Repeated failed sign-in attempts are automatically rate-limited.</li>
+                    <li><FaCheck /> You are currently signed in as {user.email}.</li>
                   </ul>
-                </div>
+                </section>
               </div>
             )}
           </div>

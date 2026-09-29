@@ -1,0 +1,27 @@
+# Premium Poultry Farm - backend dependencies
+# Install:  pip install -r backend/requirements.txt
+# Run:      python -m uvicorn app:app --reload --port 8080   (from backend/)
+
+# --- Web framework ---
+fastapi==0.128.8
+uvicorn[standard]==0.52.3
+
+# --- Database (AstraDB / DataStax Astra via the Data API) ---
+astrapy==2.3.1
+
+# --- Configuration ---
+python-dotenv==1.0.1
+
+# --- Authentication ---
+python-jose[cryptography]==3.5.0
+argon2-cffi==25.1.0
+
+# --- Validation ---
+# Pydantic ships with FastAPI; EmailStr needs this extra validator.
+pydantic==2.9.0
+email-validator==2.3.0
+
+# --- Web Push notifications (optional at runtime) ---
+# push.py degrades to in-app-only delivery when this is missing.
+pywebpush==2.5.0
+py-vapid==1.9.4

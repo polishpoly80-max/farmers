@@ -40,7 +40,7 @@ function Login() {
     const result = await login(email, password)
     if (result.success) {
       if (result.role === 'super_admin') navigate('/super')
-      else if (result.role === 'admin') navigate('/admin')
+      else if (result.role === 'admin' || result.role === 'worker') navigate('/admin')
       else navigate('/dashboard')
     } else {
       setError(result.error)

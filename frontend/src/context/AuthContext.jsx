@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { loginUser as apiLogin, registerUser as apiRegister, getMe, updateUserProfile } from '../services/api'
+import { notifyLogin, autoEnablePushNotifications } from '../services/push'
 
 const AuthContext = createContext()
 const MAX_LOGIN_ATTEMPTS = 20
@@ -61,12 +62,17 @@ export function AuthProvider({ children }) {
           }
           setUser(prev => ({ ...prev, ...data.user, token: token }))
         }
-      } catch {
-        // token invalid - logout
-        setUser(null)
-        setToken(null)
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
+      } catch (error) {
+        // Keep the cached session during a temporary backend/database outage.
+        // Only an explicit auth rejection should sign the user out.
+        if (error?.status === 401 || error?.status === 403) {
+          setUser(null)
+          setToken(null)
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+        } else {
+          console.warn('Session validation deferred:', error.message)
+        }
       }
     }
     validate()
@@ -93,8 +99,10 @@ export function AuthProvider({ children }) {
   const role = isActive ? (user?.role || 'customer') : 'customer'
   const isCustomer = role === 'customer'
   const isAdmin = isActive && (role === 'admin' || role === 'super_admin')
+  const isWorker = isActive && role === 'worker'
+  const isBranchStaff = isActive && ['admin', 'worker', 'super_admin'].includes(role)
   const isSuperAdmin = isActive && role === 'super_admin'
-  const canAccessAdmin = isAdmin
+  const canAccessAdmin = isBranchStaff
   const canAccessSuper = isSuperAdmin
 
   const login = async (email, password) => {
@@ -107,6 +115,7 @@ export function AuthProvider({ children }) {
       if (!email || !password) return { success: false, error: 'Please enter email and password' }
 
       const data = await apiLogin({ email, password })
+      setLoginAttempts({ count: 0, lockedUntil: null })
       const backendUser = data.user || data
       const accessToken = data.access_token || data.token || backendUser.token
       const userData = {
@@ -127,17 +136,34 @@ export function AuthProvider({ children }) {
       setToken(accessToken)
       setLoginAttempts({ count: 0, lockedUntil: null })
       setUser(userData)
+      autoEnablePushNotifications().catch(() => {})
+      notifyLogin().catch(() => {})
       return { success: true, role: userData.role }
     } catch (error) {
       const msg = error.message || 'Login failed. Please try again.'
+      // The server owns the lockout. Mirror its answer so the form locks in
+      // step with the backend rather than counting differently on its own.
+      const details = error?.detail
+      if (error?.status === 429 || (details && details.locked)) {
+        const retryAfter = (details?.retry_after || LOCK_DURATION) * 1000
+        setLoginAttempts({ count: MAX_LOGIN_ATTEMPTS, lockedUntil: Date.now() + retryAfter })
+        const mins = Math.ceil(retryAfter / 60000)
+        return { success: false, error: msg || `Too many failed attempts. Try again in ${mins} minute(s).` }
+      }
       const isAuthError = /invalid|not exist|unauthorized|credentials|forbidden|deactivated/i.test(msg)
       if (isAuthError) {
         const newCount = loginAttempts.count + 1
+        setLoginAttempts({ ...loginAttempts, count: newCount })
+        // Prefer the server's count when it sent one.
+        const left = details?.attempts_remaining
+        if (typeof left === 'number') {
+          setLoginAttempts({ count: MAX_LOGIN_ATTEMPTS - left, lockedUntil: null })
+          return { success: false, error: left > 0 ? `${msg} (${left} attempts remaining)` : msg }
+        }
         if (newCount >= MAX_LOGIN_ATTEMPTS) {
           setLoginAttempts({ count: 0, lockedUntil: Date.now() + LOCK_DURATION })
           return { success: false, error: `Too many failed attempts. Account locked for 15 minutes.` }
         }
-        setLoginAttempts({ ...loginAttempts, count: newCount })
         return { success: false, error: `${msg} (${MAX_LOGIN_ATTEMPTS - newCount} attempts remaining)` }
       }
       return { success: false, error: msg }
@@ -236,6 +262,8 @@ export function AuthProvider({ children }) {
       isActive,
       isCustomer,
       isAdmin,
+      isWorker,
+      isBranchStaff,
       isSuperAdmin,
       canAccessAdmin,
       canAccessSuper,

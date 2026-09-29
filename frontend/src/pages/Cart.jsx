@@ -1,45 +1,56 @@
 import { Link } from 'react-router-dom'
-import { FaTrash, FaMinus, FaPlus, FaShoppingCart, FaTruck, FaShieldAlt, FaLeaf, FaArrowRight } from 'react-icons/fa'
+import { FaTrash, FaMinus, FaPlus, FaShoppingCart, FaTruck, FaShieldAlt, FaLeaf, FaArrowRight, FaStore, FaExclamationTriangle } from 'react-icons/fa'
 import { useCart } from '../context/CartContext'
+import { useBranch } from '../context/BranchContext'
+import BranchSelector from '../components/BranchSelector'
 
 const recommended = [
-  { product_id: '12', name: 'Brown Farm Eggs (12)', price: 4.49, category: 'Eggs', weight: '12 pcs', image: 'https://cdn.pixabay.com/photo/2016/07/23/15/55/eggs-1536990_640.jpg' },
-  { product_id: '5', name: 'Chicken Wings (Pack)', price: 8.99, category: 'Chicken', weight: '1 kg', image: 'https://cdn.pixabay.com/photo/2015/03/26/09/39/chicken-wings-690221_640.jpg' },
+  { product_id: '12', name: 'Brown Farm Eggs (12)', price: 4.49, category: 'Eggs', weight: '12 pcs', image: '/images/cart-eggs.jpg' },
+  { product_id: '5', name: 'Chicken Wings (Pack)', price: 8.99, category: 'Chicken', weight: '1 kg', image: '/images/cart-chicken-wings.jpg' },
 ]
 
 function Cart() {
   const { cartItems, removeFromCart, updateQuantity, addToCart } = useCart()
+  const { currentBranch, delivery } = useBranch()
 
   const subtotal = cartItems.reduce((total, item) => total + (item.price * item.quantity), 0)
-  const shipping = subtotal > 50 ? 0 : 9.99
+  // Delivery terms belong to the selected branch.
+  const shipping = subtotal >= delivery.freeThreshold ? 0 : delivery.fee
   const total = subtotal + shipping
-  const freeShippingProgress = Math.min(100, (subtotal / 50) * 100)
+  const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
+  const freeShippingProgress = Math.min(100, (subtotal / delivery.freeThreshold) * 100)
+  const amountToFreeShipping = Math.max(0, delivery.freeThreshold - subtotal)
+  const branchClosed = currentBranch?.is_accepting_orders === false
 
   if (cartItems.length === 0) {
     return (
       <div className="cart-page">
         <div className="container">
-          <h1>Your Cart</h1>
-          <div className="empty-cart">
-            <FaShoppingCart size={64} />
-            <h2>Your cart is empty</h2>
-            <p>Looks like you haven't added any items to your cart yet. Browse our farm-fresh poultry.</p>
-            <div style={{display:'flex', gap:12, justifyContent:'center', marginBottom:24}}>
-              <Link to="/products" className="btn btn-primary">
-                Start Shopping
-              </Link>
-              <Link to="/products?category=Chicken" className="btn btn-outline">
-                Shop Chicken
-              </Link>
+          <header className="cart-header">
+            <div>
+              <span className="cart-eyebrow"><FaShoppingCart /> Basket</span>
+              <h1>Your cart</h1>
+              <p>Review your farm-fresh selection before checkout.</p>
             </div>
-            <div style={{maxWidth:560, margin:'0 auto', textAlign:'left', background:'#f9f8f6', padding:20, borderRadius:12}}>
-              <h4 style={{marginBottom:10}}>Why shop with us?</h4>
-              <ul style={{fontSize:14, color:'#666', display:'grid', gap:6, paddingLeft:18}}>
+            <Link to="/products" className="btn btn-outline">Continue shopping <FaArrowRight /></Link>
+          </header>
+
+          <div className="empty-cart">
+            <div className="empty-cart-icon"><FaShoppingCart /></div>
+            <h2>Your cart is empty</h2>
+            <p>Looks like you haven't added any items yet. Browse our farm-fresh poultry.</p>
+            <div className="empty-cart-actions">
+              <Link to="/products" className="btn btn-primary">Start shopping</Link>
+              <Link to="/products?category=Chicken" className="btn btn-outline">Shop chicken</Link>
+            </div>
+            <div className="cart-empty-benefits">
+              <h3>Why shop with us?</h3>
+              <ul>
                 <li>Farm direct — processed within 24 hours</li>
                 <li>Free delivery over $50 • Same-day before 2PM</li>
                 <li>Veterinary inspected • Antibiotic-free</li>
               </ul>
-              <p style={{fontSize:13, color:'#777', marginTop:12}}>Need help? <Link to="/contact" style={{color:'#2d5016', textDecoration:'underline'}}>Contact us</Link> or <a href="https://wa.me/15551234567" target="_blank" rel="noopener noreferrer" style={{color:'#2d5016', textDecoration:'underline'}}>WhatsApp</a></p>
+              <p>Need help? <Link to="/contact">Contact us</Link> or <a href="https://wa.me/15551234567" target="_blank" rel="noopener noreferrer">WhatsApp</a></p>
             </div>
           </div>
         </div>
@@ -50,21 +61,56 @@ function Cart() {
   return (
     <div className="cart-page">
       <div className="container">
-        <h1>Your Cart ({cartItems.reduce((s,i)=>s+i.quantity,0)} items)</h1>
+        <header className="cart-header">
+          <div>
+            <span className="cart-eyebrow"><FaShoppingCart /> Basket</span>
+            <h1>Your cart <span>({itemCount} {itemCount === 1 ? 'item' : 'items'})</span></h1>
+            <p>Review your items and delivery total before checkout.</p>
+          </div>
+          <Link to="/products" className="btn btn-outline">Continue shopping <FaArrowRight /></Link>
+        </header>
 
-        <div style={{background:'white', borderRadius:12, padding:'12px 16px', marginBottom:16, border:'1px solid #e8e5df'}}>
-          <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#666', marginBottom:6}}>
-            <span>Subtotal: ${subtotal.toFixed(2)}</span>
-            <span>{shipping===0 ? '🎉 Free shipping unlocked!' : `Add $${(50-subtotal).toFixed(2)} for free shipping`}</span>
+        <div className="branch-context-banner">
+          <span className="branch-banner-icon"><FaStore /></span>
+          <span className="branch-context-copy">
+            <strong>{currentBranch?.name || 'No branch selected'}</strong>
+            <span>
+              {currentBranch
+                ? [currentBranch.address, currentBranch.city].filter(Boolean).join(', ') ||
+                  'Stock and delivery shown for this branch'
+                : 'Choose a branch to see its stock and delivery terms'}
+            </span>
+            {branchClosed && (
+              <span className="branch-unavailable-note">
+                Not accepting orders right now — switch branch to check out.
+              </span>
+            )}
+          </span>
+          <BranchSelector />
+        </div>
+
+        <div className="cart-shipping-progress">
+          <div className="cart-shipping-copy">
+            <span>Subtotal: <strong>${subtotal.toFixed(2)}</strong></span>
+            <span className={shipping === 0 ? 'free-shipping-unlocked' : ''}>
+              {shipping === 0
+                ? '🎉 Free shipping unlocked!'
+                : `Add $${amountToFreeShipping.toFixed(2)} for free shipping`}
+            </span>
           </div>
-          <div style={{height:8, background:'#f0f0f0', borderRadius:10, overflow:'hidden'}}>
-            <div style={{height:'100%', width: `${freeShippingProgress}%`, background: shipping===0 ? '#28a745' : '#c9a227', transition:'width 0.3s'}} />
-          </div>
+          <div className="cart-progress-track"><span className={shipping === 0 ? 'free' : ''} style={{ width: `${freeShippingProgress}%` }} /></div>
         </div>
 
         <div className="cart-content">
           <div>
-            <div className="cart-items">
+            <section className="cart-items">
+              <div className="cart-items-header">
+                <div>
+                  <h2>Items in your cart</h2>
+                  <p>{itemCount} {itemCount === 1 ? 'item' : 'items'} selected</p>
+                </div>
+                <span className="cart-items-secure"><FaShieldAlt /> Secure checkout</span>
+              </div>
               {cartItems.map(item => (
                 <div key={item.product_id} className="cart-item">
                   <Link to={`/products/${item.product_id}`} className="cart-item-image">
@@ -109,42 +155,53 @@ function Cart() {
                   </div>
                 </div>
               ))}
-            </div>
+            </section>
 
-            <div style={{background:'white', borderRadius:12, padding:20, marginTop:16, border:'1px solid #e8e5df'}}>
-              <h3 style={{fontSize:15, marginBottom:12}}>You might also like</h3>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-                {recommended.map(r=> (
-                  <div key={r.product_id} style={{display:'flex', gap:12, alignItems:'center', border:'1px solid #e8e5df', borderRadius:8, padding:10}}>
-                    <img src={r.image} alt={r.name} style={{width:64, height:64, objectFit:'cover', borderRadius:8}} />
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13, fontWeight:600}}>{r.name}</div>
-                      <div style={{fontSize:12, color:'#777'}}>{r.category} • {r.weight}</div>
-                      <div style={{fontWeight:700, color:'#2d5016', fontSize:13}}>${r.price}</div>
+            <section className="cart-recommendations">
+              <h3>You might also like</h3>
+              <div className="cart-recommendations-grid">
+                {recommended.map(r => (
+                  <article className="cart-recommendation" key={r.product_id}>
+                    <img src={r.image} alt={r.name} />
+                    <div className="cart-recommendation-details">
+                      <strong>{r.name}</strong>
+                      <span>{r.category} • {r.weight}</span>
+                      <b>${r.price}</b>
                     </div>
-                    <button className="btn btn-outline" style={{padding:'6px 12px', fontSize:12}} onClick={()=>addToCart(r,1)}>Add</button>
-                  </div>
+                    <button className="btn btn-outline btn-small" onClick={() => addToCart(r, 1)}>Add</button>
+                  </article>
                 ))}
               </div>
-            </div>
+            </section>
           </div>
 
           <div className="cart-summary">
             <h2>Order Summary</h2>
 
             <div className="summary-row">
-              <span>Subtotal ({cartItems.reduce((s,i)=>s+i.quantity,0)} items)</span>
+              <span>Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
 
             <div className="summary-row">
-              <span><FaTruck style={{marginRight:6}} /> Shipping</span>
-              <span>{shipping === 0 ? 'Free' : `$${shipping}`}</span>
+              <span><FaTruck /> Shipping</span>
+              <span>{shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`}</span>
             </div>
 
             {shipping > 0 && (
               <p className="shipping-note">
-                Add ${(50 - subtotal).toFixed(2)} more for free shipping!
+                Add ${amountToFreeShipping.toFixed(2)} more for free delivery from {currentBranch?.name}!
+              </p>
+            )}
+
+            <div className="summary-row">
+              <span><FaStore /> Fulfilled by</span>
+              <span>{currentBranch?.name || '—'}</span>
+            </div>
+
+            {branchClosed && (
+              <p className="branch-unavailable-note" style={{ marginTop: 0, marginBottom: 12 }}>
+                <FaExclamationTriangle /> {currentBranch?.name} is not accepting orders — please switch branch.
               </p>
             )}
 
@@ -153,19 +210,25 @@ function Cart() {
               <span>${total.toFixed(2)}</span>
             </div>
 
-            <Link to="/checkout" className="btn btn-primary btn-block" style={{marginTop:8}}>
-              Proceed to Checkout <FaArrowRight />
-            </Link>
+            {branchClosed ? (
+              <button className="btn btn-primary btn-block cart-checkout-button" disabled>
+                Branch closed for orders
+              </button>
+            ) : (
+              <Link to="/checkout" className="btn btn-primary btn-block cart-checkout-button">
+                Proceed to Checkout <FaArrowRight />
+              </Link>
+            )}
 
             <Link to="/products" className="continue-shopping">
               Continue Shopping
             </Link>
 
-            <div style={{marginTop:18, paddingTop:16, borderTop:'1px solid #e8e5df', display:'grid', gap:8, fontSize:12, color:'#666'}}>
-              <span style={{display:'flex', alignItems:'center', gap:8}}><FaShieldAlt color="#2d5016" /> Secure checkout • SSL encrypted</span>
-              <span style={{display:'flex', alignItems:'center', gap:8}}><FaLeaf color="#2d5016" /> Antibiotic-free • Veterinary inspected</span>
-              <span style={{display:'flex', alignItems:'center', gap:8}}><FaTruck color="#2d5016" /> Delivery 1-3 days • Same-day before 2PM</span>
-              <span style={{fontSize:11}}>Questions? <Link to="/contact" style={{color:'#2d5016', textDecoration:'underline'}}>Contact support</Link> • <Link to="/terms" style={{color:'#2d5016', textDecoration:'underline'}}>Returns</Link></span>
+            <div className="cart-summary-trust">
+              <span><FaShieldAlt /> Secure checkout • SSL encrypted</span>
+              <span><FaLeaf /> Antibiotic-free • Veterinary inspected</span>
+              <span><FaTruck /> Delivery 1–3 days • Same-day before 2PM</span>
+              <small>Questions? <Link to="/contact">Contact support</Link> • <Link to="/terms">Returns</Link></small>
             </div>
           </div>
         </div>

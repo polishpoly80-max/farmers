@@ -47,16 +47,34 @@ async function request(endpoint, { method = 'GET', body, params, headers = {} } 
     let msg = data?.message
     if (!msg && data?.detail) {
       if (Array.isArray(data.detail)) {
+        // FastAPI validation errors -> "field: message; field: message"
         msg = data.detail.map((e) => e.msg || `${e.loc?.join('.')}: ${e.type}`).join('; ')
       } else if (typeof data.detail === 'string') {
         msg = data.detail
+        // Keep the body attached: some endpoints (login rate limiting) return a
+        // human message under `message` plus machine-readable counters.
+        const error = new Error(msg)
+        error.status = response.status
+        error.detail = data.detail
+        error.body = data
+        throw error
+      } else if (typeof data.detail === 'object') {
+        // Structured business error (e.g. branch stock conflict).
+        // Keep the human sentence, and expose the list on error.unavailable.
+        msg = data.detail.message || 'Request failed'
+        const error = new Error(msg)
+        error.status = response.status
+        error.detail = data.detail
+        throw error
       } else {
         msg = JSON.stringify(data.detail)
       }
     }
     msg = msg || `Request failed: ${response.status} ${response.statusText}`
     if (typeof msg !== 'string') msg = JSON.stringify(msg)
-    throw new Error(msg)
+    const error = new Error(msg)
+    error.status = response.status
+    throw error
   }
   return data
 }
@@ -70,8 +88,10 @@ const api = {
 }
 
 // ---- Products API ----
-export const getProducts = async (category = null) => {
-  const params = category ? { category } : {}
+export const getProducts = async (category = null, branchId = null) => {
+  const params = {}
+  if (category) params.category = category
+  if (branchId) params.branch_id = branchId
   return api.get('/products/', { params })
 }
 export const getProduct = async (productId) => api.get(`/products/${productId}`)
@@ -90,7 +110,39 @@ export const listTenants = async () => api.get('/tenants/')
 export const getTenant = async (id) => api.get(`/tenants/${id}`)
 export const createTenant = async (data) => api.post('/tenants/', data)
 export const updateTenant = async (id, data) => api.put(`/tenants/${id}`, data)
-export const deleteTenant = async (id) => api.delete(`/tenants/${id}`)
+export const deleteTenant = async (id, cascade = false) => api.delete(`/tenants/${id}`, { params: { cascade } })
+
+// ---- Branches API (farm locations) ----
+export const listBranches = async (includeInactive = false) =>
+  api.get('/branches/', { params: includeInactive ? { include_inactive: true } : {} })
+export const getBranch = async (id) => api.get(`/branches/${id}`)
+export const getMyBranch = async () => api.get('/branches/mine')
+export const selectBranch = async (branchId) => api.post('/branches/select', { branch_id: branchId })
+export const getBranchInventory = async (branchId) => api.get(`/branches/${branchId}/inventory`)
+export const updateBranchInventory = async (branchId, productId, data) =>
+  api.put(`/branches/${branchId}/inventory/${productId}`, data)
+export const updateBranchSettings = async (branchId, data) =>
+  api.put(`/branches/${branchId}/settings`, data)
+
+// ---- Customer care live chat ----
+export const createCareSession = async (data) => api.post('/care/sessions', data)
+export const getCareSessions = async (params = {}) =>
+  api.get('/care/sessions', { params: { status: 'all', ...params } })
+export const getCareUnreadCount = async () => api.get('/care/unread-count')
+export const getCareSession = async (id) => api.get(`/care/sessions/${id}`)
+export const sendCareMessage = async (id, body) =>
+  api.post(`/care/sessions/${id}/messages`, { body })
+export const markCareSessionRead = async (id) => api.put(`/care/sessions/${id}/read`, {})
+export const updateCareSessionStatus = async (id, status, note = null) =>
+  api.put(`/care/sessions/${id}/status`, { status, note })
+
+// ---- Notifications API (in-app centre) ----
+export const getNotifications = async (limit = 40, unreadOnly = false) =>
+  api.get('/notifications/', { params: { limit, ...(unreadOnly ? { unread_only: true } : {}) } })
+export const getUnreadCount = async () => api.get('/notifications/unread-count')
+export const markNotificationRead = async (id) => api.post(`/notifications/${id}/read`, {})
+export const markAllNotificationsRead = async () => api.post('/notifications/read-all', {})
+export const broadcastNotification = async (data) => api.post('/notifications/broadcast', data)
 
 // ---- Admin API ----
 export const getAdminStats = async () => api.get('/admin/stats')
@@ -103,15 +155,15 @@ export const getSuperTenants = async () => api.get('/super/tenants')
 
 // ---- Orders API ----
 export const createOrder = async (orderData) => api.post('/orders/', orderData)
-export const getOrders = async () => api.get('/orders/')
+export const getOrders = async (branchId = null) => api.get('/orders/', { params: branchId ? { branch_id: branchId } : {} })
 export const getOrder = async (orderId) => api.get(`/orders/${orderId}`)
+export const updateOrderStatus = async (orderId, status, note = null) =>
+  api.put(`/orders/${orderId}/status`, { status, note })
 
-// ---- Cart API ----
-export const getCart = async (userId) => api.get(`/cart/${userId}`)
-export const addToCart = async (userId, item) => api.post(`/cart/${userId}/add`, item)
-export const updateCartItem = async (userId, item) => api.put(`/cart/${userId}/update`, item)
-export const removeFromCart = async (userId, productId) => api.delete(`/cart/${userId}/remove/${productId}`)
-export const clearCart = async (userId) => api.delete(`/cart/${userId}/clear`)
+// NOTE: the cart is intentionally client-side only (see context/CartContext.jsx).
+// There is no /api/cart backend - the cart lives in localStorage and is turned
+// into an order by POST /api/orders/. The old cart endpoints were removed rather
+// than left here calling routes that do not exist.
 
 export default api
 export { request }

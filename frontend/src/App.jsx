@@ -20,11 +20,12 @@ import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import AdminDashboard from './pages/AdminDashboard'
 import SuperAdminDashboard from './pages/SuperAdminDashboard'
+import CareChat from './pages/CareChat'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app">
         <Header />
         <main className="main-content">
@@ -37,8 +38,9 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/dashboard" element={<ProtectedRoute require="customer"><Dashboard /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute require="admin"><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute require="branch_staff"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/super" element={<ProtectedRoute require="super_admin"><SuperAdminDashboard /></ProtectedRoute>} />
+            <Route path="/care-chat" element={<ProtectedRoute><CareChat /></ProtectedRoute>} />
             <Route path="/order-confirmation" element={<OrderConfirmation />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />

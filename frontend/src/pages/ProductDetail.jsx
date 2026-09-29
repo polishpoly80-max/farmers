@@ -93,9 +93,15 @@ function ProductDetail() {
               <span style={{display:'flex',alignItems:'center',gap:6}}><FaClock color="#2d5016" /> Same-day dispatch before 2PM</span>
             </div>
 
-            <div style={{display:'flex', gap:8, marginBottom:16}}>
-              {['description','nutrition','storage','shipping'].map(tab=> (
-                <button key={tab} onClick={()=>setActiveTab(tab)} style={{padding:'7px 14px', borderRadius:20, border: activeTab===tab ? '1.5px solid #2d5016' : '1px solid #e8e5df', background: activeTab===tab ? '#f0f7ee' : 'white', fontSize:12, fontWeight:600, textTransform:'capitalize'}}>{tab}</button>
+            <div className="product-detail-tabs">
+              {['description','nutrition','storage','shipping'].map(tab => (
+                <button
+                  key={tab}
+                  className={activeTab === tab ? 'active' : ''}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                </button>
               ))}
             </div>
 
@@ -155,13 +161,13 @@ function ProductDetail() {
         </div>
 
         {related.length >0 && (
-          <div style={{background:'white', borderRadius:12, padding:'24px', marginTop:24}}>
-            <h3 style={{marginBottom:16}}>Related Products</h3>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16}}>
-              {related.map(p=> (
+          <div className="related-products-section">
+            <h3>Related Products</h3>
+            <div className="related-products-grid">
+              {related.map(p => (
                 <Link key={p.product_id} to={`/products/${p.product_id}`} className="shop-card">
-                  <div className="shop-card-image" style={{height:140}}><img src={p.image} alt={p.name} /> {(p.stock_quantity ?? p.stock) === 0 && <div className="out-of-stock-overlay"><span>Out of Stock</span></div>}</div>
-                  <div className="shop-card-info"><span className="shop-card-category">{p.category}</span><h3 className="shop-card-name" style={{fontSize:14}}>{p.name}</h3><span style={{fontWeight:700, color:'#2d5016'}}>${p.price}</span> <span style={{fontSize:11, color: (p.stock_quantity ?? 0)===0 ? '#dc2626' : '#777'}}>• {(p.stock_quantity ?? 0)} available</span></div>
+                  <div className="shop-card-image"><img src={p.image} alt={p.name} /> {(p.stock_quantity ?? p.stock) === 0 && <div className="out-of-stock-overlay"><span>Out of Stock</span></div>}</div>
+                  <div className="shop-card-info"><span className="shop-card-category">{p.category}</span><h3 className="shop-card-name">{p.name}</h3><span className="related-product-price">${p.price}</span> <span className="related-product-stock">• {(p.stock_quantity ?? 0)} available</span></div>
                 </Link>
               ))}
             </div>

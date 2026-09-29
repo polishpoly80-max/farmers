@@ -3,12 +3,16 @@ import { Link, useNavigate } from 'react-router-dom'
 import { FaLock, FaTruck, FaShieldAlt, FaStore, FaTag } from 'react-icons/fa'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
+import { useBranch } from '../context/BranchContext'
 import { toast } from 'react-toastify'
 import { createOrder } from '../services/api'
+import { notifyOrderPlaced, preparePushNotifications } from '../services/push'
+import BranchSelector from '../components/BranchSelector'
 
 function Checkout() {
   const { cartItems, clearCart } = useCart()
   const { user } = useAuth()
+  const { currentBranch, branchId, delivery } = useBranch()
   const navigate = useNavigate()
   const [promo, setPromo] = useState('')
   const [discount, setDiscount] = useState(0)
@@ -30,10 +34,14 @@ function Checkout() {
     cvv: ''
   })
 
+  // Delivery rules come from the selected branch, not a hard-coded $9.99/$50.
   const subtotal = cartItems.reduce((total, item) => total + (item.price * item.quantity), 0)
-  const shipping = deliveryMode === 'pickup' ? 0 : (subtotal > 50 ? 0 : 9.99)
+  const shipping = deliveryMode === 'pickup'
+    ? 0
+    : (subtotal >= delivery.freeThreshold ? 0 : delivery.fee)
   const promoDiscount = discount > 0 ? subtotal * discount : 0
   const total = subtotal - promoDiscount + shipping
+  const branchClosed = currentBranch?.is_accepting_orders === false
 
   const handleChange = (e) => {
     setFormData({
@@ -52,10 +60,16 @@ function Checkout() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (branchClosed) {
+      toast.error(`${currentBranch?.name} is not accepting orders right now`)
+      return
+    }
     if (formData.cardNumber.replace(/\s/g,'').length < 12) {
       toast.error('Please enter a valid card number')
       return
     }
+    // Ask for browser permission during the checkout click, then subscribe automatically.
+    preparePushNotifications().catch(() => {})
     setSubmitting(true)
     try {
       const shippingAddress = `${formData.address}, ${formData.city}, ${formData.state} ${formData.zipCode}`
@@ -76,13 +90,38 @@ function Checkout() {
         payment_method: 'card',
         promo_code: promo || null,
         promo_discount: promoDiscount,
+        // the branch that will physically fulfil this order
+        branch_id: branchId || undefined,
       }
       const result = await createOrder(orderData)
+      notifyOrderPlaced(result.order_id).catch(() => {})
+      // The server recomputes prices and the promo discount from the catalogue,
+      // so its numbers are the real ones. Show those rather than our local
+      // estimate, in case a price or code changed since the page loaded.
+      const finalTotal = typeof result.total === 'number' ? result.total : total
+      const finalDiscount = result.promo_discount ?? promoDiscount
       toast.success('Order placed successfully! Confirmation email sent.')
       clearCart()
-      navigate('/order-confirmation', { state: { total, deliveryMode, promoDiscount, orderId: result.order_id } })
+      navigate('/order-confirmation', {
+        state: {
+          total: finalTotal,
+          deliveryMode,
+          promoDiscount: finalDiscount,
+          orderId: result.order_id,
+          branchName: result.branch_name || currentBranch?.name,
+        },
+      })
     } catch (error) {
-      toast.error(error.message || 'Failed to place order. Please try again.')
+      // A 409 means this branch can no longer cover part of the order.
+      const unavailable = error?.detail?.unavailable
+      if (Array.isArray(unavailable) && unavailable.length) {
+        const summary = unavailable
+          .map((u) => `${u.name} (${u.available} left, you wanted ${u.requested})`)
+          .join(', ')
+        toast.error(`${currentBranch?.name || 'This branch'} is out of stock: ${summary}`)
+      } else {
+        toast.error(error.message || 'Failed to place order. Please try again.')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -108,27 +147,82 @@ function Checkout() {
   return (
     <div className="checkout-page">
       <div className="container">
-        <h1>Checkout</h1>
-        <div style={{fontSize:13, color:'#666', marginBottom:16}}>
-          <Link to="/cart" style={{color:'#2d5016', textDecoration:'underline'}}>Back to cart</Link> • {cartItems.reduce((s,i)=>s+i.quantity,0)} items • Secure SSL checkout
+        <header className="checkout-header">
+          <div>
+            <span className="checkout-eyebrow"><FaLock /> Secure checkout</span>
+            <h1>Complete your order</h1>
+            <p>Choose delivery, enter your details, and place your order securely.</p>
+          </div>
+          <div className="checkout-progress" aria-label="Checkout progress">
+            <span className="active"><b>1</b> Cart</span>
+            <i />
+            <span className="active"><b>2</b> Details</span>
+            <i />
+            <span><b>3</b> Confirmation</span>
+          </div>
+        </header>
+
+        <div className="checkout-meta">
+          <Link to="/cart">← Back to cart</Link>
+          <span>{cartItems.reduce((s, i) => s + i.quantity, 0)} items</span>
+          <span><FaShieldAlt /> SSL encrypted</span>
+        </div>
+
+        {/* Which farm branch fulfils this order */}
+        <div className="branch-context-banner">
+          <span className="branch-banner-icon"><FaStore /></span>
+          <span className="branch-context-copy">
+            <strong>{currentBranch?.name || 'No branch selected'}</strong>
+            <span>
+              {currentBranch
+                ? [currentBranch.address, currentBranch.city].filter(Boolean).join(', ') ||
+                  'Pickup point for this order'
+                : 'Choose a branch to see its stock and delivery terms'}
+            </span>
+            {branchClosed && (
+              <span className="branch-unavailable-note">
+                This branch is not accepting orders right now — pick another branch.
+              </span>
+            )}
+          </span>
+          <BranchSelector />
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="checkout-grid">
             <div className="checkout-form">
-              <div style={{display:'flex', gap:12, marginBottom:20}}>
+              <div className="delivery-options">
                 {[
-                  { id:'delivery', label:'Delivery', icon:FaTruck, desc:'1-3 days • $9.99 (Free over $50)' },
-                  { id:'pickup', label:'Farm Pickup', icon:FaStore, desc:'Free • Sat 9AM-1PM • 123 Farm Road' }
-                ].map(m=> (
-                  <button key={m.id} type="button" onClick={()=>setDeliveryMode(m.id)} style={{flex:1, border: deliveryMode===m.id ? '2px solid #2d5016' : '1px solid #e8e5df', background: deliveryMode===m.id ? '#f0f7ee' : 'white', borderRadius:12, padding:14, textAlign:'left'}}>
-                    <div style={{display:'flex', alignItems:'center', gap:8, fontWeight:700, fontSize:14}}><m.icon color="#2d5016" /> {m.label}</div>
-                    <div style={{fontSize:12, color:'#666', marginTop:4}}>{m.desc}</div>
+                  {
+                    id: 'delivery',
+                    label: 'Delivery',
+                    icon: FaTruck,
+                    desc: delivery.fee > 0
+                      ? `1–3 days • $${Number(delivery.fee).toFixed(2)} (Free over $${Number(delivery.freeThreshold).toFixed(0)})`
+                      : '1–3 days • Free delivery',
+                  },
+                  {
+                    id: 'pickup',
+                    label: 'Farm Pickup',
+                    icon: FaStore,
+                    desc: currentBranch?.opening_hours
+                      ? `Free • ${currentBranch.opening_hours}${currentBranch.address ? ` • ${currentBranch.address}` : ''}`
+                      : `Free • ${currentBranch?.address || 'Farm counter'}`,
+                  },
+                ].map(method => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    className={`delivery-option ${deliveryMode === method.id ? 'active' : ''}`}
+                    onClick={() => setDeliveryMode(method.id)}
+                  >
+                    <span className="delivery-option-title"><method.icon /> {method.label}</span>
+                    <span className="delivery-option-description">{method.desc}</span>
                   </button>
                 ))}
               </div>
 
-              <h2>Shipping Information</h2>
+              <h2 className="checkout-section-title"><span>01</span> Shipping Information</h2>
 
               <div className="form-row">
                 <div className="form-group">
@@ -192,7 +286,7 @@ function Checkout() {
                 />
               </div>
 
-              <div className="form-row" style={{gridTemplateColumns:'2fr 1fr 1fr'}}>
+              <div className="form-row form-row-address">
                 <div className="form-group">
                   <label>City *</label>
                   <input
@@ -236,12 +330,12 @@ function Checkout() {
                   onChange={handleChange}
                   placeholder="Delivery instructions, gate code, halal request, etc."
                   rows="3"
-                  style={{width:'100%', padding:'12px 14px', border:'1px solid #e8e5df', borderRadius:8, fontSize:14, background:'#f9f8f6'}}
+                  className="checkout-textarea"
                 />
               </div>
 
-              <h2>Payment Information</h2>
-              <p style={{fontSize:12, color:'#777', marginBottom:14}}><FaLock style={{marginRight:6}} /> Encrypted and processed securely. We never store full card numbers.</p>
+              <h2 className="checkout-section-title"><span>02</span> Payment Information</h2>
+              <p className="payment-security-note"><FaLock /> Encrypted and processed securely. We never store full card numbers.</p>
 
               <div className="form-group">
                 <label>Card Number *</label>
@@ -291,12 +385,12 @@ function Checkout() {
                   />
                 </div>
               </div>
-              <div style={{display:'flex', gap:8, fontSize:12, color:'#666', alignItems:'center', marginTop:8}}>
-                <FaShieldAlt color="#2d5016" /> Cash on delivery available — select at delivery if you prefer.
+              <div className="cash-delivery-note">
+                <FaShieldAlt /> Cash on delivery available — select at delivery if you prefer.
               </div>
             </div>
 
-            <div className="order-summary">
+            <div className="order-summary checkout-summary">
               <h2>Order Summary</h2>
 
               <div className="order-items">
@@ -311,17 +405,16 @@ function Checkout() {
                 ))}
               </div>
 
-              <div style={{display:'flex', gap:8, marginBottom:16}}>
+              <div className="promo-code-row">
                 <input
                   type="text"
                   placeholder="Promo code (FARM10)"
                   value={promo}
-                  onChange={e=>setPromo(e.target.value)}
-                  style={{flex:1, padding:'10px 12px', border:'1px solid #e8e5df', borderRadius:8, fontSize:13}}
+                  onChange={e => setPromo(e.target.value)}
                 />
-                <button type="button" onClick={applyPromo} className="btn btn-outline" style={{padding:'10px 16px'}}><FaTag /> Apply</button>
+                <button type="button" onClick={applyPromo} className="btn btn-outline"><FaTag /> Apply</button>
               </div>
-              <div style={{fontSize:12, color:'#777', marginBottom:12}}>Try <strong>FARM10</strong> for 10% off or <strong>FRESH5</strong> for 5% off.</div>
+              <p className="promo-hint">Try <strong>FARM10</strong> for 10% off or <strong>FRESH5</strong> for 5% off.</p>
 
               <div className="summary-row">
                 <span>Subtotal</span>
@@ -329,15 +422,20 @@ function Checkout() {
               </div>
 
               {promoDiscount >0 && (
-                <div className="summary-row" style={{color:'#1a7f37'}}>
-                  <span>Promo discount ({(discount*100).toFixed(0)}%)</span>
+                <div className="summary-row promo-discount-row">
+                  <span>Promo discount ({(discount * 100).toFixed(0)}%)</span>
                   <span>-${promoDiscount.toFixed(2)}</span>
                 </div>
               )}
 
               <div className="summary-row">
                 <span><FaTruck /> {deliveryMode==='pickup' ? 'Pickup' : 'Shipping'}</span>
-                <span>{shipping === 0 ? 'Free' : `$${shipping}`}</span>
+                <span>{shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`}</span>
+              </div>
+
+              <div className="summary-row">
+                <span><FaStore /> Fulfilled by</span>
+                <span>{currentBranch?.name || '—'}</span>
               </div>
 
               <div className="summary-row total">
@@ -345,21 +443,25 @@ function Checkout() {
                 <span>${total.toFixed(2)}</span>
               </div>
 
-              <button type="submit" className="btn btn-primary btn-block" style={{marginTop:12}} disabled={submitting}>
+              <button
+                type="submit"
+                className="btn btn-primary btn-block place-order-button"
+                disabled={submitting || branchClosed}
+              >
                 <FaLock /> {submitting ? 'Processing...' : `Place Order — $${total.toFixed(2)}`}
               </button>
 
               <p className="secure-text">
                 <FaLock /> Your payment is secure and encrypted
               </p>
-              <p style={{fontSize:11, color:'#777', textAlign:'center', marginTop:8}}>
-                By placing your order, you agree to our <Link to="/terms" style={{color:'#2d5016', textDecoration:'underline'}}>Terms</Link> and <Link to="/privacy" style={{color:'#2d5016', textDecoration:'underline'}}>Privacy Policy</Link>.
+              <p className="checkout-legal">
+                By placing your order, you agree to our <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
               </p>
-              <div style={{background:'#f9f8f6', borderRadius:8, padding:12, marginTop:16, fontSize:12, lineHeight:1.6, color:'#666'}}>
-                <strong>What happens next?</strong><br/>
-                • Confirmation email instantly<br/>
-                • Packed fresh & dispatched cold-chain<br/>
-                • Tracking via SMS/email • Support: +1 (555) 123-4567
+              <div className="next-steps-card">
+                <strong>What happens next?</strong>
+                <span>Confirmation email instantly</span>
+                <span>Packed fresh & dispatched cold-chain</span>
+                <span>Tracking via SMS/email • Support: +1 (555) 123-4567</span>
               </div>
             </div>
           </div>
