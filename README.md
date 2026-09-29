@@ -1,156 +1,240 @@
 # Premium Poultry Farm - E-Commerce Website
 
-A classic and mature poultry farm e-commerce website built with React frontend and FastAPI backend with AstraDB.
+A multi-branch poultry farm storefront: React 18 + Vite frontend, FastAPI backend,
+AstraDB (Cassandra Data API) for storage.
+
+Customers pick a farm branch, see that branch's live stock, and order from it.
+Each branch manages its own inventory, delivery fees and opening hours. Staff
+roles (worker / branch admin / super admin) see the admin dashboards.
 
 ## Project Structure
 
 ```
 farmers/
-├── backend/              # FastAPI Backend
-│   ├── app/
-│   │   ├── core/         # Configuration and database
-│   │   ├── models/       # Pydantic models
-│   │   ├── routers/      # API routes
-│   │   └── services/     # Business logic
-│   ├── main.py           # FastAPI app entry
+├── backend/                    # FastAPI backend
+│   ├── app.py                  # All HTTP routes
+│   ├── auth.py                 # JWT + role guards + login rate limiting
+│   ├── db.py                   # AstraDB client, collection bootstrap, health
+│   ├── models.py               # Pydantic request/response models
+│   ├── push.py                 # In-app notifications + Web Push delivery
+│   ├── utils.py                # Argon2id password hashing
+│   ├── seed_multi_tenant.py    # Demo data (branches, users, stock)
 │   └── requirements.txt
 │
-├── frontend/             # React Frontend
+├── frontend/                   # React frontend
 │   ├── src/
-│   │   ├── components/   # Reusable components
-│   │   ├── pages/        # Page components
-│   │   ├── context/      # React Context
-│   │   └── services/     # API services
-│   ├── package.json
+│   │   ├── components/         # Header, ProductCard, BranchSelector, ...
+│   │   ├── context/            # Auth, Branch, Product, Notification, Cart
+│   │   ├── hooks/
+│   │   ├── pages/
+│   │   ├── services/           # api.js (HTTP client), push.js (web push)
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── public/                 # Images, icons, push-sw.js
 │   └── vite.config.js
 │
-└── README.md
+├── .env                        # Local secrets (git-ignored)
+└── .env.example                # Template
 ```
-
-## Features
-
-### Backend (FastAPI + AstraDB)
-- RESTful API endpoints for products, users, orders, and cart
-- AstraDB (Cassandra) integration for data storage
-- JWT authentication support
-- CORS configuration for frontend integration
-
-### Frontend (React)
-- Responsive design with classic poultry farm theme
-- Product browsing with category filtering
-- Shopping cart functionality
-- User authentication (login/register)
-- Checkout process with order summary
-- Modern UI with custom styling
 
 ## Quick Start
 
-### Backend Setup
+### 1. Backend
 
-1. Navigate to backend directory:
 ```bash
 cd backend
-```
-
-2. Install Python dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables:
+Create `.env` in the **project root** (not in `backend/`) and fill it in:
+
 ```bash
 cp .env.example .env
-# Edit .env with your AstraDB credentials
 ```
 
-4. Start the backend server:
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `ASTRA_DB_API_ENDPOINT` | yes | `https://<db-id>-<region>.apps.astra.datastax.com` |
+| `ASTRA_DB_TOKEN` | yes | Scoped database token (`AstraCS:...`) |
+| `ASTRA_DB_KEYSPACE` | yes | The keyspace must already exist - it is not created for you |
+| `JWT_SECRET` | recommended | Falls back to a dev value if unset. **Set this in production.** |
+| `JWT_EXPIRE_HOURS` | no | Defaults to `72` |
+| `LOGIN_MAX_ATTEMPTS` | no | Failed sign-ins before lockout. Defaults to `10` |
+| `LOGIN_LOCK_SECONDS` | no | Lockout duration. Defaults to `900` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Required only for web push |
+
+Start the server:
+
 ```bash
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080
+cd backend
+python -m uvicorn app:app --reload --port 8080
 ```
 
-The API will be available at: http://localhost:8080
-API documentation: http://localhost:8080/docs
+- API: http://localhost:8080
+- Docs: http://localhost:8080/docs
+- Health (includes database state): http://localhost:8080/health
 
-### Frontend Setup
+The keyspace is **not** created automatically. Create it in the AstraDB console,
+or with `astra create-keyspace <name>`. If it is missing the backend exits with a
+clear message instead of appearing to have no data.
 
-1. Navigate to frontend directory:
+### 2. Seed demo data (optional)
+
+```bash
+python backend/seed_multi_tenant.py
+```
+
+Creates three branches, a 12-product catalogue, per-branch stock, and these accounts:
+
+| Role | Email | Password | Lands on |
+| --- | --- | --- | --- |
+| Super admin | `super@premiumpoultry.com` | `Super123!` | `/super` |
+| Branch admin | `admin@premiumpoultry.com` | `Admin123!` | `/admin` |
+| Branch admin | `demo.admin@premiumpoultry.com` | `Demo123!` | `/admin` |
+| Worker | `worker@premiumpoultry.com` | `Worker123!` | `/admin` (read-only) |
+| Customer | `customer@premiumpoultry.com` | `Customer123!` | `/dashboard` |
+
+The script is idempotent - re-running updates rather than duplicates. Passwords
+are Argon2id hashed.
+
+### 3. Frontend
+
 ```bash
 cd frontend
-```
-
-2. Install Node.js dependencies:
-```bash
 npm install
-```
-
-3. Start the development server:
-```bash
 npm run dev
 ```
 
-The frontend will be available at: http://localhost:4000
+Runs on http://localhost:7500, with `/api` proxied to `localhost:8080`.
+
+## Architecture Notes
+
+**Branches are tenants.** A branch document lives in the `tenants` collection, so
+the existing role model (a staff account belongs to a tenant) keeps working. The
+branch-specific fields (`code`, `city`, `latitude`, `delivery_fee`,
+`free_delivery_threshold`, `opening_hours`, ...) describe the physical location.
+
+**Per-branch stock** lives in `inventory`, keyed by `(branch_id, product_id)`.
+The `products` collection holds only the shared catalogue (name, price, images).
+Selecting a branch overlays its stock on the catalogue in `ProductContext`.
+
+**Prices and discounts are computed server-side.** `POST /api/orders/` re-reads
+each product's price from the catalogue and applies its own promo table, ignoring
+the prices and `promo_discount` in the request. Those are treated as display hints
+from the cart, not billing inputs.
+
+**Stock decrements are conditional.** The decrement only applies if the stock is
+still there, so two orders racing for the last unit cannot both succeed. A line
+that loses the race rolls back the earlier lines and the order is withdrawn.
+
+**AstraDB hibernation is handled explicitly.** Free-tier databases sleep when
+idle. `db_status()` classifies the database as connected / waking / unavailable,
+an exception handler turns a resume error into a `503` with `code: "db_waking"`,
+and the frontend keeps the user signed in during a brief outage instead of
+treating it as an auth failure.
+
+**Notifications are two layers.** `push.py` always writes an in-app document to
+`notifications` (rendered by the header bell, survives reloads) and additionally
+delivers Web Push when a VAPID key is configured. Web push is optional: if
+`pywebpush` or the keys are missing, in-app delivery still works.
+
+**The cart is client-side only.** It lives in `localStorage` and is turned into an
+order by `POST /api/orders/`. There is no `/api/cart` backend.
+
+## Roles
+
+| Role | Scope | Can do |
+| --- | --- | --- |
+| `customer` | Own branch | Browse, order, care chat |
+| `worker` | Own branch | Read admin dashboard, update order status, care chat |
+| `admin` | Own branch | Everything above + stock, branch settings, broadcasts, staff roles |
+| `super_admin` | All branches | All of the above across every branch, + create/delete branches |
+
+Branch staff cannot read or modify another branch's data; the check is repeated
+on every mutating route rather than trusted from the UI.
 
 ## API Endpoints
 
-### Products
-- `GET /api/products/` - Get all products
-- `GET /api/products/{id}` - Get product by ID
-- `POST /api/products/` - Create a product
-- `PUT /api/products/{id}` - Update a product
-- `DELETE /api/products/{id}` - Delete a product
+All paths are prefixed with `/api`.
 
-### Users
-- `POST /api/users/register` - Register a new user
-- `POST /api/users/login` - Login user
-- `GET /api/users/` - Get all users
+### Auth & users
+- `POST /api/users/register` - Register (public signup always creates a customer)
+- `POST /api/users/login` - Login (rate limited)
+- `GET /api/users/me` - Current profile
+- `PUT /api/users/me` - Update profile
+- `GET /api/users/` - List users (staff only, branch-scoped)
+- `PUT /api/users/{user_id}/role` - Change role (admin/super only)
+
+### Branches
+- `GET /api/branches/` - Public list, with stock totals
+- `GET /api/branches/mine` - The caller's selected branch
+- `GET /api/branches/{id}` - Branch detail
+- `GET /api/branches/{id}/inventory` - Stock levels
+- `PUT /api/branches/{id}/inventory/{product_id}` - Set stock (admin)
+- `PUT /api/branches/{id}/settings` - Update location/hours/delivery (admin)
+- `POST /api/branches/select` - Remember the chosen branch
+
+### Products
+- `GET /api/products/` - Catalogue (`?category=`, `?branch_id=`)
+- `GET /api/products/{id}` - Product detail
 
 ### Orders
-- `POST /api/orders/` - Create an order
-- `GET /api/orders/` - Get all orders
-- `GET /api/orders/{id}` - Get order by ID
+- `POST /api/orders/` - Place an order
+- `GET /api/orders/` - Own orders, or the branch's orders for staff
+- `GET /api/orders/{id}` - Order detail
+- `PUT /api/orders/{id}/status` - Update status (staff)
 
-### Cart
-- `GET /api/cart/{user_id}` - Get user's cart
-- `POST /api/cart/{user_id}/add` - Add item to cart
-- `PUT /api/cart/{user_id}/update` - Update cart item
-- `DELETE /api/cart/{user_id}/remove/{product_id}` - Remove from cart
+### Notifications
+- `GET /api/notifications/` - Inbox (newest first)
+- `GET /api/notifications/unread-count` - Badge count
+- `POST /api/notifications/{id}/read` - Mark read
+- `POST /api/notifications/read-all` - Mark all read
+- `POST /api/notifications/broadcast` - Admin announcement
+- `GET /api/notifications/vapid-public-key` - Web push public key
+- `POST /api/notifications/subscribe` / `unsubscribe` - Manage web push
+- `POST /api/notifications/test` - Send a test notification
+
+### Customer care
+- `POST /api/care/sessions` - Open a support request
+- `GET /api/care/sessions` - Own conversations, or the branch queue for staff
+- `GET /api/care/sessions/{id}` - Session with message thread
+- `POST /api/care/sessions/{id}/messages` - Send a message
+- `PUT /api/care/sessions/{id}/read` - Clear the unread badge
+- `PUT /api/care/sessions/{id}/status` - Accept / resolve (staff)
+- `GET /api/care/unread-count` - Badge count
+
+### Admin
+- `GET /api/admin/stats`, `GET /api/admin/users`
+- `GET /api/super/stats`, `GET /api/super/users`, `GET /api/super/tenants`
+- `GET|POST|PUT|DELETE /api/tenants/` - Branch (tenant) CRUD, super admin
+
+## Not Implemented
+
+Being explicit so these are not mistaken for working features:
+
+- **Payments are simulated.** `Checkout.jsx` collects card number / expiry / CVV
+  and discards them; only the card's length is validated. No gateway is
+  integrated, so orders are recorded with `payment_status: "pending"`. Card
+  fields must not be trusted or stored once a real gateway is added - they
+  should be tokenised by the provider and never touch this server.
+- **The catalogue is duplicated** between `ProductContext.jsx` and
+  `CATALOGUE` in `seed_multi_tenant.py`. The storefront reads its own copy from
+  `localStorage`; the API copy is used for stock and pricing. Adding a product
+  means editing both, and only inventory/price changes come from the server.
+- **Login rate limiting is per-process and in-memory.** Correct for a single API
+  process; behind multiple workers each keeps its own counter, so a shared store
+  (Redis) is needed if this is scaled horizontally.
+- **List endpoints are capped, not paged.** Reads are limited to 200 documents
+  rather than supporting cursor pagination.
+- **No email.** Checkout shows a confirmation message but nothing is sent.
 
 ## Tech Stack
 
-**Backend:**
-- Python 3.9+
-- FastAPI
-- AstraDB (Cassandra)
-- Pydantic
-- python-jose (JWT)
-- passlib (password hashing)
+**Backend:** Python 3.9+, FastAPI, Uvicorn, AstraDB (`astrapy`), Pydantic,
+`python-jose` (JWT), `argon2-cffi` (Argon2id), `pywebpush`.
 
-**Frontend:**
-- React 18
-- Vite
-- React Router DOM
-- Axios
-- React Icons
-- React Toastify
-
-## Database Configuration (AstraDB)
-
-1. Create an AstraDB account at https://astra.datastax.com
-2. Create a new database
-3. Generate an authentication token
-4. Update `.env` file with your credentials:
-   - ASTRA_DB_ID
-   - ASTRA_DB_REGION
-   - ASTRA_DB_PASSWORD (use the token)
-   - ASTRA_DB_KEYSPACE
-
-## Development
-
-The project is set up with:
-- Hot reload for both frontend and backend
-- Proxy configuration for API calls
-- Mock data for initial development
-- Responsive design for all screen sizes
+**Frontend:** React 18, Vite 6, React Router 6, `react-icons`, `react-toastify`.
+No UI framework - styling is plain CSS.
 
 ## License
 

@@ -51,6 +51,16 @@ coverage/
 *.pem
 .vercel
 .netlify
+
+# Tooling scratch output
+.playwright-mcp/
+.opencode/
+*.local.html
+
+# Runtime / OS
+Thumbs.db.lock
+*.log
+
 # Agent / MCP session artifacts
 .playwright-mcp/
 .opencode/

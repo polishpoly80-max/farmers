@@ -50,6 +50,9 @@ function Checkout() {
     })
   }
 
+  // The rates below mirror the server's PROMO_CODES table and exist only to
+  // preview the saving. The server re-applies the code itself and returns the
+  // real discount, which is what the confirmation page shows.
   const applyPromo = () => {
     const code = promo.trim().toUpperCase()
     if (code === 'FARM10') { setDiscount(0.1); toast.success('Promo applied: 10% off!') }
@@ -88,6 +91,9 @@ function Checkout() {
         phone: formData.phone,
         notes: formData.notes,
         payment_method: 'card',
+        // Only the code is sent as an instruction. The server re-prices every
+        // item from the catalogue and recomputes the discount, so these totals
+        // are display values rather than what actually gets charged.
         promo_code: promo || null,
         promo_discount: promoDiscount,
         // the branch that will physically fulfil this order

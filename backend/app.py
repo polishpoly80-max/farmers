@@ -76,6 +76,10 @@ app.add_middleware(
 )
 
 # --- Router with /api prefix to match frontend services/api.js ---
+# Upper bound on how many documents any single list endpoint will pull into
+# memory. Callers may ask for fewer; they can never ask for unbounded.
+MAX_LIST_LIMIT = 200
+
 api_router = APIRouter(prefix="/api")
 users_router = APIRouter(prefix="/users", tags=["users"])
 tenants_router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -1568,15 +1572,20 @@ def create_order(body: OrderCreate, payload: dict = Depends(require_auth)):
         _seed_branch_inventory(branch_real_id)
     stock = _branch_stock_map(branch_real_id)
 
+    # A product this branch has no inventory line for is treated as unavailable,
+    # not as "unlimited": otherwise a product missing from `stock` would skip
+    # the check entirely and could be ordered in any quantity. When the whole
+    # branch has no stock lines the map is empty and we cannot judge, so the
+    # check is skipped rather than rejecting every order.
     unavailable = [
         {
             "product_id": item.product_id,
             "name": item.name,
             "requested": item.quantity,
-            "available": stock[item.product_id],
+            "available": stock.get(item.product_id, 0),
         }
         for item in body.items
-        if item.product_id in stock and stock[item.product_id] < item.quantity
+        if not stock or stock.get(item.product_id, 0) < item.quantity
     ]
     if unavailable:
         raise HTTPException(
@@ -1785,9 +1794,6 @@ def update_order_status(
         print(f"[push] order status notification failed: {exc}")
 
     return {"message": "Order status updated", "order_id": order_id, "status": body.status}
-
-
-MAX_LIST_LIMIT = 200
 
 
 @orders_router.get("/")
