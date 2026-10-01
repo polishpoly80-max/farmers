@@ -55,8 +55,17 @@ except ImportError:
 
 app = FastAPI(title="Premium Poultry Farm API", version="2.2.0", description="Multi-branch + multi-tenant roles: customer, worker, branch admin, super admin")
 
-# --- CORS: allow frontend dev servers (Vite 7500, 5173, 4000) ---
-origins = [
+# --- CORS ---
+# In development the frontend is a Vite dev server on localhost, so those
+# origins are always allowed. In production the real site domain must be
+# supplied via CORS_ORIGINS (comma-separated), otherwise the browser blocks
+# every API call and the deployed app loads but cannot fetch anything.
+#
+# The wildcard "*" is deliberately not the default: credentials are enabled, and
+# browsers reject "*" together with credentials anyway. Setting CORS_ORIGINS="*"
+# therefore falls back to "no cross-origin access" rather than silently
+# misbehaving - see the warning printed below.
+DEV_ORIGINS = [
     "http://localhost:7500",
     "http://127.0.0.1:7500",
     "http://localhost:5173",
@@ -66,6 +75,32 @@ origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+
+def _configured_origins() -> list:
+    """Origins allowed to call this API, from the CORS_ORIGINS env var."""
+    raw = os.getenv("CORS_ORIGINS", "")
+    parsed = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+    if "*" in parsed:
+        print(
+            "[CORS] CORS_ORIGINS='*' cannot be used with credentialed requests "
+            "and would silently break the deployed frontend. Ignored."
+        )
+        parsed = [origin for origin in parsed if origin != "*"]
+    return parsed
+
+
+prod_origins = _configured_origins()
+origins = list(dict.fromkeys(DEV_ORIGINS + prod_origins))
+
+if prod_origins:
+    print(f"[CORS] Allowing production origins: {', '.join(prod_origins)}")
+else:
+    print(
+        "[CORS] CORS_ORIGINS is not set - only localhost dev origins are allowed.\n"
+        "[CORS] If you are deploying, set it to your site origin, for example:\n"
+        "[CORS]   CORS_ORIGINS=https://your-site.com,https://www.your-site.com"
+    )
 
 app.add_middleware(
     CORSMiddleware,

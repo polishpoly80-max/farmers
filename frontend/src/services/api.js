@@ -1,5 +1,22 @@
-// Fetch-based API client - uses Vite proxy: VITE_API_URL || '/api' -> http://localhost:8080
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+// Where the API lives.
+//
+// In development the default '/api' works because the Vite dev server proxies it
+// to http://localhost:8080 (see vite.config.js). That proxy only exists for
+// `npm run dev` - it is NOT part of a production build, so deploying dist/
+// as static files with the default would send every request to the frontend's
+// own origin and 404.
+//
+// For production, build with an absolute URL:
+//   VITE_API_URL=https://api.your-domain.com/api npm run build
+// or set it in the .env file at the project root.
+//
+// window.__API_BASE_URL__ is an escape hatch for hosts where the built assets
+// are deployed without a rebuild: a small inline script in index.html can set it
+// before the bundle loads.
+const API_BASE_URL =
+  (typeof window !== 'undefined' && window.__API_BASE_URL__) ||
+  import.meta.env.VITE_API_URL ||
+  '/api'
 
 async function request(endpoint, { method = 'GET', body, params, headers = {} } = {}) {
   let url = `${API_BASE_URL}${endpoint}`

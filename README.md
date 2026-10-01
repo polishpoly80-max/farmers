@@ -62,6 +62,7 @@ cp .env.example .env
 | `LOGIN_MAX_ATTEMPTS` | no | Failed sign-ins before lockout. Defaults to `10` |
 | `LOGIN_LOCK_SECONDS` | no | Lockout duration. Defaults to `900` |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Required only for web push |
+| `CORS_ORIGINS` | **in production** | Your deployed site's origin(s), comma-separated |
 
 Start the server:
 
@@ -106,6 +107,40 @@ npm run dev
 ```
 
 Runs on http://localhost:7500, with `/api` proxied to `localhost:8080`.
+
+## Deploying
+
+Three settings must be right or a deployed site loads but cannot talk to the API.
+
+**1. Rotate the AstraDB token** if you have not already, then set the new one plus
+the others as environment variables in your host's dashboard (not a committed file):
+
+```
+ASTRA_DB_API_ENDPOINT, ASTRA_DB_TOKEN, ASTRA_DB_KEYSPACE
+JWT_SECRET              # required in production; do not rely on the dev default
+CORS_ORIGINS            # your site's origin(s), comma-separated
+```
+
+**2. `CORS_ORIGINS` must be your real domain.** The dev defaults are all
+`localhost`; without this variable every request is blocked by the browser.
+A `*` value is rejected deliberately, because the API sends credentials and
+browsers refuse that combination.
+
+**3. Build the frontend with an absolute API URL:**
+
+```bash
+cd frontend
+VITE_API_URL=https://api.your-domain.com/api npm run build
+```
+
+The relative default `/api` only resolves through the Vite dev-server proxy,
+which is not part of a built bundle. `npm run build` fails with an explanatory
+error if this is still relative, so a broken build cannot ship unnoticed. If your
+host serves the API on the same origin behind nginx or a platform proxy, set
+`VITE_ALLOW_RELATIVE_API=true` instead.
+
+Also note the backend exits immediately if the AstraDB keyspace does not exist,
+so create it before the first deploy.
 
 ## Architecture Notes
 
