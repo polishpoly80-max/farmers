@@ -163,6 +163,11 @@ user_preferences_collection = _get_or_create_collection("user_preferences")
 # Customer-care live chat sessions (one document per support request/conversation)
 care_sessions_collection = _get_or_create_collection("care_sessions")
 
+# Server-side carts, one document per signed-in shopper. This is what makes an
+# abandoned cart recoverable: the browser copy disappears with the session, so
+# the reminder flow needs its own record of what was left behind.
+carts_collection = _get_or_create_collection("carts")
+
 # --- Health / hibernation handling ---------------------------------------
 # AstraDB free-tier databases sleep after a period of inactivity and answer
 # requests with HTTP 400 + "resuming from hibernation" for a few minutes while

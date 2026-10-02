@@ -11,8 +11,14 @@ function resolveTarget(payload) {
   if (type === 'login') return '/dashboard'
   if (type === 'stock_alert') return '/admin'
   if (type === 'announcement') return '/products'
+  if (type === 'cart_reminder') return '/cart'
+  if (type === 'care_request' || type === 'care_message' || type === 'care_status') return '/care-chat'
   return '/'
 }
+
+// The app icons ship with the PWA manifest; using them keeps notifications and
+// the installed app looking like one product instead of two.
+const APP_ICON = '/icon-192.png'
 
 self.addEventListener('push', event => {
   let payload = { title: 'Premium Poultry Farm', body: 'You have a new update.' }
@@ -25,8 +31,8 @@ self.addEventListener('push', event => {
   const target = resolveTarget(payload)
   const options = {
     body: payload.body,
-    icon: '/images/farm-chicken.jpg',
-    badge: '/images/farm-chicken.jpg',
+    icon: APP_ICON,
+    badge: APP_ICON,
     tag: payload.tag || payload.data?.type || 'farm-notification',
     data: { ...(payload.data || {}), url: target },
     vibrate: [120, 60, 120],
@@ -52,8 +58,8 @@ self.addEventListener('message', event => {
   if (data.type === 'login') {
     event.waitUntil(self.registration.showNotification(data.title || 'New account login', {
       body: data.body || 'Your Premium Poultry Farm account was just signed in.',
-      icon: '/images/farm-chicken.jpg',
-      badge: '/images/farm-chicken.jpg',
+      icon: APP_ICON,
+      badge: APP_ICON,
       tag: 'account-login',
       data: { type: 'login', url: '/dashboard' },
     }))
@@ -61,8 +67,8 @@ self.addEventListener('message', event => {
   if (data.type === 'order') {
     event.waitUntil(self.registration.showNotification(data.title || 'Order placed successfully', {
       body: data.body || 'Your order is being prepared.',
-      icon: '/images/farm-chicken.jpg',
-      badge: '/images/farm-chicken.jpg',
+      icon: APP_ICON,
+      badge: APP_ICON,
       tag: `order-${data.orderId || 'new'}`,
       data: { type: 'order', orderId: data.orderId, url: '/dashboard' },
     }))

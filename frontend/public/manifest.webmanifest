@@ -1,0 +1,46 @@
+{
+  "name": "Premium Poultry Farm",
+  "short_name": "Poultry",
+  "description": "Fresh farm products, branch delivery and live customer care.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fdfcf9",
+  "theme_color": "#2d5016",
+  "categories": ["food", "shopping"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Shop products",
+      "url": "/products"
+    },
+    {
+      "name": "My orders",
+      "url": "/dashboard"
+    },
+    {
+      "name": "Customer care",
+      "url": "/care-chat"
+    }
+  ]
+}

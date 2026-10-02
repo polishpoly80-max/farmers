@@ -240,6 +240,28 @@ class PushSubscribeRequest(BaseModel):
     user_agent: Optional[str] = None
 
 
+# ==================== ABANDONED CART RECOVERY ====================
+
+class CartItemInput(BaseModel):
+    product_id: str
+    name: str = ""
+    price: float = 0
+    quantity: int = Field(default=1, ge=1, le=99)
+    image: Optional[str] = None
+    branch_id: Optional[str] = None
+
+
+class CartSave(BaseModel):
+    """The browser's current cart, mirrored server-side."""
+    items: list[CartItemInput] = []
+    branch_id: Optional[str] = None
+
+
+class CartReminderCheck(BaseModel):
+    """Body for the reminder sweep. The threshold lives server-side."""
+    branch_id: Optional[str] = None
+
+
 # ==================== CUSTOMER CARE LIVE CHAT ====================
 
 CareStatus = Literal["waiting", "accepted", "resolved", "closed"]

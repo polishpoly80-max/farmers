@@ -25,11 +25,12 @@ try:
                         OrderCreate, OrderResponse, OrderItem, BranchResponse, BranchInventoryItem,
                         InventoryUpdate, BranchSelect, NotificationResponse, NotificationCreate,
                         PushSubscribeRequest, OrderStatusUpdate,
-                        CareSessionCreate, CareMessageCreate, CareStatusUpdate)
+                        CareSessionCreate, CareMessageCreate, CareStatusUpdate,
+                        CartSave, CartReminderCheck)
     from db import (user_collection, tenants_collection, products_collection, orders_collection,
                     push_subscriptions_collection, inventory_collection,
                     notifications_collection, user_preferences_collection,
-                    care_sessions_collection)
+                    care_sessions_collection, carts_collection)
     from utils import hash_password, verify_password, needs_rehash
     from auth import (create_access_token, require_auth, require_role, require_branch_staff,
                       get_current_user_payload, enforce_login_rate_limit, record_login_failure,
@@ -41,11 +42,12 @@ except ImportError:
                                 OrderCreate, OrderResponse, OrderItem, BranchResponse, BranchInventoryItem,
                                 InventoryUpdate, BranchSelect, NotificationResponse, NotificationCreate,
                                 PushSubscribeRequest, OrderStatusUpdate,
-                                CareSessionCreate, CareMessageCreate, CareStatusUpdate)  # type: ignore
+                                CareSessionCreate, CareMessageCreate, CareStatusUpdate,
+                                CartSave, CartReminderCheck)  # type: ignore
     from backend.db import (user_collection, tenants_collection, products_collection, orders_collection,
                             push_subscriptions_collection, inventory_collection,
                             notifications_collection, user_preferences_collection,
-                            care_sessions_collection)  # type: ignore
+                            care_sessions_collection, carts_collection)  # type: ignore
     from backend.utils import hash_password, verify_password, needs_rehash  # type: ignore
     from backend.auth import (create_access_token, require_auth, require_role, require_branch_staff,  # type: ignore
                               get_current_user_payload, enforce_login_rate_limit, record_login_failure,
@@ -125,6 +127,7 @@ products_router = APIRouter(prefix="/products", tags=["products"])
 notifications_router = APIRouter(prefix="/notifications", tags=["notifications"])
 branches_router = APIRouter(prefix="/branches", tags=["branches"])
 care_router = APIRouter(prefix="/care", tags=["care"])
+carts_router = APIRouter(prefix="/cart", tags=["cart"])
 
 def _slugify(name: str) -> str:
     s = name.lower().strip()
@@ -1692,6 +1695,14 @@ def create_order(body: OrderCreate, payload: dict = Depends(require_auth)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    # The cart has been converted, so it must stop looking abandoned or the
+    # reminder sweep would nudge this shopper about an order they already made.
+    if carts_collection is not None:
+        try:
+            carts_collection.delete_one({"user_id": user_id})
+        except Exception as exc:
+            print(f"[cart] post-order cleanup failed: {exc}")
+
     # ---- decrement only this branch's stock ----
     # The availability check above was a read, so two orders racing for the last
     # unit could both pass it. Each decrement is therefore conditional on the
@@ -2370,6 +2381,181 @@ def update_care_session_status(
     return {"message": "Care session updated", "session": _care_session_public(fresh, "staff")}
 
 
+# ==================== ABANDONED CART RECOVERY ====================
+# A cart left behind is the highest-return reminder in e-commerce, and this app
+# already owns the delivery channel (in-app centre + web push). The browser copy
+# of a cart dies with the session, so the server keeps its own mirror.
+#
+# There is no background scheduler, so the shopper's own client asks whether a
+# reminder is due (`/cart/reminder/check`). The server is the only thing that
+# decides: it holds the last-activity timestamp and the last time it nudged, so
+# a reload, a second tab, or a blocked timer cannot spam anyone.
+
+CART_IDLE_MINUTES = 30          # do not nudge sooner than this
+CART_REMINDER_COOLDOWN_HOURS = 20  # and at most once per this window
+
+
+def _cart_idle_seconds(doc: dict) -> float:
+    """Seconds since the cart last changed."""
+    if not doc:
+        return 0.0
+    last = str(doc.get("updated_at") or doc.get("created_at") or "")
+    if not last:
+        return 0.0
+    try:
+        then = datetime.fromisoformat(last)
+    except ValueError:
+        return 0.0
+    return max(0.0, (datetime.utcnow() - then).total_seconds())
+
+
+@carts_router.put("/")
+def save_cart(body: CartSave, payload: dict = Depends(require_auth)):
+    """Mirror the signed-in shopper's cart and restart the idle timer."""
+    if carts_collection is None:
+        raise HTTPException(status_code=503, detail="Cart storage is unavailable")
+    user_id = payload.get("user_id") or payload.get("sub")
+    email = payload.get("email") or payload.get("sub")
+    now = datetime.utcnow().isoformat()
+
+    items = [item.model_dump() for item in body.items if item.quantity > 0]
+    if not items:
+        # An emptied cart is not an abandoned cart: clear it so the sweep in
+        # `/cart/reminder/check` never nags about a cart that no longer exists.
+        try:
+            carts_collection.delete_one({"user_id": user_id})
+        except Exception as exc:
+            print(f"[cart] clear failed: {exc}")
+        return {"message": "Cart cleared", "items": 0}
+
+    doc = {
+        "user_id": user_id,
+        "email": email,
+        "items": items,
+        "branch_id": body.branch_id or payload.get("tenant_id"),
+        "tenant_id": payload.get("tenant_id"),
+        "updated_at": now,
+        "created_at": now,
+    }
+    try:
+        carts_collection.update_one(
+            {"user_id": user_id},
+            {"$set": doc, "$setOnInsert": {"reminders": []}},
+            upsert=True,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return {
+        "message": "Cart saved",
+        "items": len(items),
+        "total": round(sum(i.get("price", 0) * i.get("quantity", 0) for i in items), 2),
+    }
+
+
+@carts_router.get("/")
+def get_cart(payload: dict = Depends(require_auth)):
+    """Restore the shopper's cart when they sign in on another device."""
+    if carts_collection is None:
+        return {"items": [], "total": 0}
+    user_id = payload.get("user_id") or payload.get("sub")
+    try:
+        doc = carts_collection.find_one({"user_id": user_id}) or {}
+    except Exception:
+        return {"items": [], "total": 0}
+    items = doc.get("items", []) or []
+    return {
+        "items": items,
+        "branch_id": doc.get("branch_id"),
+        "total": round(sum(i.get("price", 0) * i.get("quantity", 0) for i in items), 2),
+        "count": len(items),
+    }
+
+
+@carts_router.delete("/")
+def clear_cart(payload: dict = Depends(require_auth)):
+    """Drop the stored cart. Called after a successful checkout."""
+    if carts_collection is None:
+        return {"message": "Cart cleared"}
+    user_id = payload.get("user_id") or payload.get("sub")
+    try:
+        carts_collection.delete_one({"user_id": user_id})
+    except Exception as exc:
+        print(f"[cart] clear failed: {exc}")
+    return {"message": "Cart cleared"}
+
+
+@carts_router.post("/reminder/check")
+def check_cart_reminder(body: CartReminderCheck, payload: dict = Depends(require_auth)):
+    """Decide whether this shopper should get an abandoned-cart nudge.
+
+    Returns `due: true` when a nudge was actually sent so the client knows to
+    stop asking, and `due: false` with `reason` when nothing was sent.
+    """
+    if carts_collection is None:
+        return {"due": False, "reason": "unavailable"}
+
+    user_id = payload.get("user_id") or payload.get("sub")
+    email = payload.get("email") or payload.get("sub")
+    try:
+        doc = carts_collection.find_one({"user_id": user_id})
+    except Exception as exc:
+        print(f"[cart] reminder lookup failed: {exc}")
+        return {"due": False, "reason": "lookup_failed"}
+
+    if not doc:
+        return {"due": False, "reason": "no_cart"}
+
+    items = doc.get("items", []) or []
+    if not items:
+        return {"due": False, "reason": "empty_cart"}
+
+    idle = _cart_idle_seconds(doc)
+    if idle < CART_IDLE_MINUTES * 60:
+        return {"due": False, "reason": "still_active", "idle_minutes": round(idle / 60, 1)}
+
+    # Respect the cooldown so a shopper who keeps browsing is not nagged.
+    reminders = doc.get("reminders", []) or []
+    last_reminder = reminders[-1] if reminders else None
+    if last_reminder:
+        try:
+            gap = (datetime.utcnow() - datetime.fromisoformat(str(last_reminder))).total_seconds()
+            if gap < CART_REMINDER_COOLDOWN_HOURS * 3600:
+                return {"due": False, "reason": "cooldown", "hours_since_last": round(gap / 3600, 1)}
+        except ValueError:
+            pass
+
+    total = sum(i.get("price", 0) * i.get("quantity", 0) for i in items)
+    count = sum(i.get("quantity", 0) for i in items)
+    first = items[0].get("name") or "your items"
+    label = first if len(items) == 1 else f"{first} and {len(items) - 1} more"
+    now = datetime.utcnow().isoformat()
+
+    try:
+        carts_collection.update_one(
+            {"user_id": user_id},
+            {"$push": {"reminders": now}, "$set": {"last_reminder_at": now}},
+        )
+    except Exception as exc:
+        print(f"[cart] could not record reminder: {exc}")
+
+    try:
+        notify(
+            user_id=user_id,
+            email=email,
+            title="Your cart is still waiting",
+            body=f"{label} - ${total:.2f}. Pick up where you left off.",
+            notification_type="cart_reminder",
+            branch_id=doc.get("branch_id"),
+            data={"url": "/cart", "total": total, "count": count},
+            url="/cart",
+        )
+    except Exception as exc:
+        print(f"[cart] reminder notification failed: {exc}")
+
+    return {"due": True, "total": round(total, 2), "count": count, "idle_minutes": round(idle / 60, 1)}
+
+
 # Mount routers
 api_router.include_router(users_router)
 api_router.include_router(tenants_router)
@@ -2380,6 +2566,7 @@ api_router.include_router(orders_router)
 api_router.include_router(notifications_router)
 api_router.include_router(branches_router)
 api_router.include_router(care_router)
+api_router.include_router(carts_router)
 app.include_router(api_router)
 
 # --- Legacy routes (keep for backwards compat with old frontend) ---

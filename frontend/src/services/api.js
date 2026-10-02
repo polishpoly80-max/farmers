@@ -177,10 +177,14 @@ export const getOrder = async (orderId) => api.get(`/orders/${orderId}`)
 export const updateOrderStatus = async (orderId, status, note = null) =>
   api.put(`/orders/${orderId}/status`, { status, note })
 
-// NOTE: the cart is intentionally client-side only (see context/CartContext.jsx).
-// There is no /api/cart backend - the cart lives in localStorage and is turned
-// into an order by POST /api/orders/. The old cart endpoints were removed rather
-// than left here calling routes that do not exist.
+// ---- Cart API ----
+// The cart renders from localStorage so updates feel instant, and is mirrored
+// server-side so it survives a device change and can be recovered when the
+// shopper leaves before checking out.
+export const saveCart = async (items, branchId = null) => api.put('/cart/', { items, branch_id: branchId })
+export const getCart = async () => api.get('/cart/')
+export const clearCart = async () => api.delete('/cart/')
+export const checkCartReminder = async () => api.post('/cart/reminder/check', {})
 
 export default api
 export { request }
