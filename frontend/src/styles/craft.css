@@ -1,0 +1,264 @@
+/* =============================================================================
+   Premium Poultry Farm - "Vercel-inspired" craft layer
+   -----------------------------------------------------------------------------
+   A restraint, not a redesign. This borrows the *craft* that makes the Vercel
+   site feel precise, and leaves the farm's green-and-gold identity intact:
+
+     1. A hairline grid + soft mesh wash behind the page, for depth without weight.
+     2. Geist for UI text and Geist Mono for technical/meta labels (prices, ids,
+        order numbers, timestamps, eyebrow captions).
+     3. Hairline borders expressed in alpha rather than flat grey, so they sit
+        correctly on any surface.
+     4. A tighter radius scale and a two-step elevation that reads as light
+        rather than shadow.
+
+   Deliberately excluded: monochrome palettes, uppercase-everything, and the
+   Vercel black. Those would erase the brand.
+   ========================================================================== */
+
+:root {
+  /* Type. Geist first, Inter as a graceful fallback so a font CDN hiccup does
+     not reflow the whole app. */
+  --font-sans: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+
+  /* Hairlines. Alpha reads correctly on both the cream page and white cards,
+     where a flat #e8e5df line looks muddy. */
+  --hairline: rgba(23, 23, 23, 0.08);
+  --hairline-strong: rgba(23, 23, 23, 0.14);
+  --hairline-invert: rgba(255, 255, 255, 0.12);
+
+  /* Elevation: tighter and cooler than the existing warm shadows. */
+  --v-shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.04), 0 1px 1px rgba(23, 23, 23, 0.03);
+  --v-shadow-md: 0 4px 12px -2px rgba(23, 23, 23, 0.06), 0 2px 6px -2px rgba(23, 23, 23, 0.04);
+  --v-shadow-lg: 0 16px 40px -8px rgba(23, 23, 23, 0.10), 0 4px 12px -4px rgba(23, 23, 23, 0.05);
+
+  /* Radius. Vercel sits around 6-8px; the existing 8/12/16 stays valid but the
+     cap is pulled in so large panels stop reading as bubbles. */
+  --v-radius-xs: 4px;
+  --v-radius-sm: 6px;
+  --v-radius-md: 8px;
+  --v-radius-lg: 12px;
+
+  /* Brand tints reused by the mesh wash. */
+  --mesh-green: rgba(74, 140, 63, 0.16);
+  --mesh-gold: rgba(201, 162, 39, 0.13);
+}
+
+/* -----------------------------------------------------------------------------
+   1. Page texture
+   Two fixed layers behind everything: a dot grid for structure and a soft mesh
+   wash for warmth. Both are `position: fixed` and `pointer-events: none`, so
+   they never affect layout or intercept clicks, and both live behind z-index 0.
+   -------------------------------------------------------------------------- */
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Dot grid. Radial-gradient tiling is far cheaper than a background-image and
+   stays crisp on retina because the tile is a fixed device-independent size. */
+body::before {
+  background-image: radial-gradient(circle at 1px 1px, rgba(45, 80, 22, 0.10) 1px, transparent 0);
+  background-size: 22px 22px;
+  /* Fade the grid out toward the bottom so long pages do not end in texture. */
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.35));
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.35));
+}
+
+/* Mesh wash: two offset radials in the brand tints, anchored to the top where
+   the hero lives so the colour reads as light rather than as a background. */
+body::after {
+  background:
+    radial-gradient(58rem 32rem at 12% -8%, var(--mesh-green), transparent 62%),
+    radial-gradient(46rem 28rem at 88% -4%, var(--mesh-gold), transparent 60%);
+  /* Slight animated drift, disabled by the reduced-motion block in motion.css. */
+  animation: mesh-drift 26s ease-in-out infinite alternate;
+}
+
+@keyframes mesh-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 14px, 0); }
+}
+
+/* Cards sit on the cream page, so they need to lift it slightly or the grid
+   shows through the content. */
+.header,
+.shop-grid > *,
+.dashboard-panel,
+.container > section,
+footer {
+  position: relative;
+}
+
+/* -----------------------------------------------------------------------------
+   2. Typography
+   -------------------------------------------------------------------------- */
+
+body {
+  font-family: var(--font-sans);
+  /* Vercel tracks slightly tighter than the default at small sizes. */
+  letter-spacing: -0.011em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+/* The display serif stays for headings: it is the farm's voice. Only the UI
+   layer moves to Geist. */
+
+/* Mono for anything that is data rather than prose: prices, ids, counts,
+   timestamps and eyebrow captions. This is the single most recognisable Vercel
+   gesture, so it is applied deliberately and narrowly. */
+.mono,
+.price-value,
+.order-status,
+.session-id,
+.stat-value,
+.admin-role-pill,
+.card-badge,
+.shop-card-price,
+.product-price,
+.cart-line-price {
+  font-family: var(--font-mono);
+  /* Mono has no optical size compensation, so tracking must be added back. */
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Eyebrow captions above section headings. */
+.section-label,
+.care-chat-eyebrow,
+.contact-hero-subtitle + .label,
+.back-link {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* -----------------------------------------------------------------------------
+   3. Hairline surfaces
+   Buttons and cards get a 1px inner hairline instead of a heavy border, which
+   is what keeps a dense UI looking light.
+   -------------------------------------------------------------------------- */
+
+.btn {
+  border: 1px solid var(--hairline);
+  box-shadow: var(--v-shadow-sm);
+}
+
+.btn-primary {
+  border-color: transparent;
+}
+
+.btn-outline,
+.btn-ghost {
+  border-color: var(--hairline-strong);
+  background-color: transparent;
+}
+
+.btn-outline:hover:not(:disabled) {
+  border-color: rgba(45, 80, 22, 0.35);
+  background-color: rgba(45, 80, 22, 0.04);
+}
+
+/* Inputs: crisp, with the ring doing the work instead of a heavy border. */
+input[type='text'],
+input[type='email'],
+input[type='tel'],
+input[type='number'],
+input[type='password'],
+input[type='search'],
+select,
+textarea {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--v-shadow-sm);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(45, 80, 22, 0.5);
+  box-shadow: 0 0 0 3px rgba(45, 80, 22, 0.13);
+}
+
+/* -----------------------------------------------------------------------------
+   4. Status pills
+   Small monospace pills with a tinted dot rather than a heavy filled chip.
+   -------------------------------------------------------------------------- */
+
+.order-status,
+.admin-role-pill,
+.care-status {
+  border-radius: var(--v-radius-sm);
+  border: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   5. Focus
+   Replaces the thick default with the crisp inset ring Vercel uses.
+   -------------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: var(--v-radius-xs);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Scrollbars
+   Thin and unobtrusive, and themed to the hairline rather than the OS default.
+   -------------------------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(23, 23, 23, 0.22) transparent;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(23, 23, 23, 0.2);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(23, 23, 23, 0.34); }
+
+/* -----------------------------------------------------------------------------
+   7. Selection
+   -------------------------------------------------------------------------- */
+
+::selection {
+  background-color: rgba(45, 80, 22, 0.18);
+  color: var(--primary-dark);
+}
+
+/* -----------------------------------------------------------------------------
+   8. Reduced motion
+   The mesh drift must stop for anyone who asked for stillness. motion.css
+   already neutralises animations globally; this keeps the wash itself visible
+   without its movement.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+}

@@ -1,7 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+// Layout and brand colour live in index.css; motion, loading states and focus
+// treatment live in styles/motion.css so the two can change independently;
+// craft.css adds the type, hairline and texture layer last so it can refine
+// what the other two establish.
 import './index.css'
+import './styles/motion.css'
+import './styles/craft.css'
 import { CartProvider } from './context/CartContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { ProductProvider } from './context/ProductContext.jsx'

@@ -28,6 +28,10 @@ export function ProductProvider({ children }) {
   // Per-branch stock, keyed by product_id. Empty until the first fetch, and
   // reset whenever the customer switches branch.
   const [branchStock, setBranchStock] = useState({})
+  // True only while the first stock fetch for a branch is in flight. Without
+  // this the catalogue renders with placeholder stock levels and then snaps to
+  // the real ones, which reads as a bug rather than a load.
+  const [loading, setLoading] = useState(true)
 
   const [products, setProducts] = useState(() => {
     try {
@@ -62,8 +66,10 @@ export function ProductProvider({ children }) {
   const loadBranchStock = useCallback(async () => {
     if (!branchId) {
       setBranchStock({})
+      setLoading(false)
       return
     }
+    setLoading(true)
     try {
       const data = await getBranchInventory(branchId)
       const map = {}
@@ -74,6 +80,8 @@ export function ProductProvider({ children }) {
     } catch {
       // Admin-only endpoint rejects customers; fall back to shared stock.
       setBranchStock({})
+    } finally {
+      setLoading(false)
     }
   }, [branchId])
 
@@ -142,6 +150,7 @@ export function ProductProvider({ children }) {
   return (
     <ProductContext.Provider value={{
       products: branchProducts,
+      loading,
       getStatus,
       stockFor,
       isAvailable,

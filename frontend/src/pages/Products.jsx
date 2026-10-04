@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { FaSearch, FaLeaf } from 'react-icons/fa'
 import ProductCard from '../components/ProductCard'
+import { RevealGroup } from '../components/Reveal'
+import { SkeletonCard } from '../components/Skeleton'
 import { useProducts } from '../context/ProductContext'
 
 function Products() {
-  const { products: allProducts } = useProducts()
+  const { products: allProducts, loading } = useProducts()
   const [searchParams, setSearchParams] = useSearchParams()
   const [products, setProducts] = useState(allProducts)
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'all')
@@ -116,14 +118,24 @@ function Products() {
           </div>
         </div>
 
-        <div style={{fontSize:13, color:'#777', marginBottom:14}}>Showing {products.length} of {allProducts.length} products {searchTerm && <>for "<strong>{searchTerm}</strong>"</>}</div>
+        <div style={{fontSize:13, color:'#777', marginBottom:14}}>
+          {loading
+            ? 'Loading the current harvest...'
+            : <>Showing {products.length} of {allProducts.length} products {searchTerm && <>for "<strong>{searchTerm}</strong>"</>}</>}
+        </div>
 
         {/* Products Grid */}
-        <div className="shop-grid">
-          {products.map(product => (
-            <ProductCard key={product.product_id} product={product} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="shop-grid">
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        ) : (
+          <RevealGroup className="shop-grid" step={60}>
+            {products.map(product => (
+              <ProductCard key={product.product_id} product={product} />
+            ))}
+          </RevealGroup>
+        )}
 
         {products.length === 0 && (
           <div className="no-products" style={{background:'white', borderRadius:12, padding:'60px 24px', marginTop:16}}>
