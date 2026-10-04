@@ -142,6 +142,52 @@ host serves the API on the same origin behind nginx or a platform proxy, set
 Also note the backend exits immediately if the AstraDB keyspace does not exist,
 so create it before the first deploy.
 
+### Backend on Render
+
+`render.yaml` at the repo root is a Render Blueprint, so you can deploy from the
+dashboard (New → Blueprint → point at this repo) instead of filling the form in.
+The settings it expects:
+
+| Field | Value |
+| --- | --- |
+| Root Directory | `backend` |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `uvicorn app:app --host 0.0.0.0 --port $PORT` |
+| Health Check Path | `/health` |
+
+Two details that are easy to get wrong:
+
+- `--host 0.0.0.0` is required. Render routes traffic to the container's
+  internal interface, so binding `127.0.0.1` produces a service that looks
+  started but answers nothing.
+- `app:app` rather than `backend.app:app`, because the Root Directory is already
+  `backend`. Leave the root directory blank if you prefer the long form.
+
+Set these as environment variables on the service (not in a committed file):
+`ASTRA_DB_API_ENDPOINT`, `ASTRA_DB_TOKEN`, `ASTRA_DB_KEYSPACE`, `JWT_SECRET`
+(generate a fresh one — do not reuse the local value) and `CORS_ORIGINS`.
+
+### Frontend on Vercel
+
+Set the project **Root Directory** to `frontend`. `frontend/vercel.json` handles
+the SPA fallback (without it, refreshing `/products` returns 404), adds long-lived
+caching for hashed assets, and stops the service worker being served stale.
+
+Add one environment variable in the Vercel project:
+
+```
+VITE_API_URL=https://<your-render-service>.onrender.com/api
+```
+
+Deploy the backend first so you have its URL, then set this and deploy the
+frontend. Finish by setting `CORS_ORIGINS` on the backend to your Vercel origin —
+the browser rejects the request before it reaches the API, so without this the
+site loads and then every call fails in the console.
+
+Free-tier note: both Render and Vercel sleep idle instances, so the first request
+after a pause is slow while the API and AstraDB both resume. Vercel also
+imposes a 60s limit on serverless responses, which this API stays well within.
+
 ## Architecture Notes
 
 **Branches are tenants.** A branch document lives in the `tenants` collection, so

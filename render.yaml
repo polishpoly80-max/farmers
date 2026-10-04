@@ -1,0 +1,46 @@
+# Render blueprint for the Premium Poultry Farm backend.
+#
+# Deploy with:  https://render.com/deploy?repo=<your-repo-url>
+# Or push this file and use Render's "New > Blueprint" and point it at the repo.
+#
+# Secrets are NOT stored here on purpose. Set each `sync: false` variable in the
+# Render dashboard (Environment tab) so the real values never enter git:
+#
+#   ASTRA_DB_API_ENDPOINT   https://<db-id>-<region>.apps.astra.datastax.com
+#   ASTRA_DB_TOKEN          AstraCS:...
+#   ASTRA_DB_KEYSPACE       <keyspace name>
+#   JWT_SECRET              python -c "import secrets; print(secrets.token_urlsafe(48))"
+#   CORS_ORIGINS            https://<your-app>.vercel.app
+#
+# CORS_ORIGINS is comma-separated and must list every frontend origin that will
+# call this API, because the browser blocks the request before it reaches here.
+
+services:
+  - type: web
+    name: poultry-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    # Free instances sleep after inactivity. The first request after a sleep is
+    # slow while AstraDB resumes too, so allow generous headroom rather than
+    # letting Render kill a request mid-wake.
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: ASTRA_DB_API_ENDPOINT
+        sync: false
+      - key: ASTRA_DB_TOKEN
+        sync: false
+      - key: ASTRA_DB_KEYSPACE
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Replace with your Vercel origin once you know it. Multiple origins are
+      # comma-separated: https://a.vercel.app,https://b.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
