@@ -86,15 +86,10 @@ body::after {
   to { transform: translate3d(0, 14px, 0); }
 }
 
-/* Cards sit on the cream page, so they need to lift it slightly or the grid
-   shows through the content. */
-.header,
-.shop-grid > *,
-.dashboard-panel,
-.container > section,
-footer {
-  position: relative;
-}
+/* NOTE: do not add `position` rules here for .header. index.css sets
+   `position: sticky; top: 0` and this file is imported after it, so any
+   position value in this layer wins at equal specificity and silently turns the
+   sticky navbar into a scrolling one. */
 
 /* -----------------------------------------------------------------------------
    2. Typography
